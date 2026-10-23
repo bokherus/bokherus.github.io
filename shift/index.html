@@ -462,6 +462,40 @@
       color: var(--ink-tone);
     }
     .day.dim .holder { color: #aeaeb2; }
+    .day.arriving {
+      --arrive: var(--tint);
+      animation: day-arrive 220ms ease both;
+    }
+    .day.arriving.dim { --arrive: #ececef; }
+    .day.arriving .holder,
+    .day.arriving .corner { animation: holder-arrive 220ms ease both; }
+    @keyframes day-arrive {
+      from {
+        background: transparent;
+        box-shadow: none;
+      }
+      to {
+        background: var(--arrive);
+        box-shadow:
+          var(--seam-l, inset 0 0 0 transparent),
+          var(--seam-r, inset 0 0 0 transparent),
+          var(--seam-t, inset 0 0 0 transparent),
+          var(--seam-b, inset 0 0 0 transparent);
+      }
+    }
+    @keyframes holder-arrive {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .day.arriving,
+      .day.arriving .holder,
+      .day.arriving .corner { animation: none; }
+    }
+    .app.is-revealing .sidebar,
+    .app.is-revealing #calendar,
+    .app.is-revealing #chooser,
+    .app.is-revealing #block-panel { pointer-events: none; }
     #chooser {
       position: absolute;
       z-index: 5;
@@ -1187,6 +1221,13 @@ let state = loadState();
 let focusDoctor = null;
 let blockDoctor = null;
 let weekdayPick = null;
+let revealing = false;
+let generateTicket = 0;
+let revealTimer = 0;
+const REVEAL_HOLD = 300;
+const REVEAL_GAP = 250;
+const REVEAL_FADE = 220;
+const appEl = document.querySelector(".app");
 
 function currentMonthValue() {
   const now = new Date();
@@ -1256,7 +1297,7 @@ function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ month: state.month, rules: state.rules, grid: state.grid }));
 }
 
-function formatDay(parsed, day) {
+function formatDate(parsed, day) {
   return new Date(parsed.year, parsed.monthIndex, day).toLocaleDateString("en-GB", {
     day: "numeric",
     month: "long",
@@ -1290,11 +1331,20 @@ function weekdayRules(id, rule) {
 
 function renderCounts() {
   const tally = Object.fromEntries(DOCTORS.map((id) => [id, 0]));
-  if (state.grid) for (const id of state.grid) tally[id] += 1;
+  const show = Boolean(state.grid) && !revealing;
+  if (show) for (const id of state.grid) tally[id] += 1;
   for (const id of DOCTORS) {
     const el = doctorsEl.querySelector(`[data-count="${id}"]`);
-    if (el) el.textContent = state.grid ? String(tally[id]) : "";
+    if (el) el.textContent = show ? String(tally[id]) : "";
   }
+}
+
+function syncRevealLock() {
+  appEl.classList.toggle("is-revealing", revealing);
+  calendarEl.toggleAttribute("inert", revealing);
+  doctorsEl.toggleAttribute("inert", revealing);
+  blockPanelEl.toggleAttribute("inert", revealing);
+  calendarEl.setAttribute("aria-busy", revealing ? "true" : "false");
 }
 
 function blockPanel(id, parsed) {
@@ -1314,7 +1364,7 @@ function blockPanel(id, parsed) {
     if (pressed) numClass.push("is-blocked");
     else if (isToday) numClass.push("is-today");
     const verb = pressed ? "Clear excluded" : "Exclude";
-    return `<td class="${tdClass}"><button type="button" class="pick" data-block-day="${day}" data-doctor="${id}" aria-pressed="${pressed}"${isToday ? ` aria-current="date"` : ""} aria-label="${verb} ${formatDay(parsed, day)} for ${id}"><span class="${numClass.join(" ")}"><span class="n">${day}</span></span></button></td>`;
+    return `<td class="${tdClass}"><button type="button" class="pick" data-block-day="${day}" data-doctor="${id}" aria-pressed="${pressed}"${isToday ? ` aria-current="date"` : ""} aria-label="${verb} ${formatDate(parsed, day)} for ${id}"><span class="${numClass.join(" ")}"><span class="n">${day}</span></span></button></td>`;
   });
   const rows = [];
   for (let index = 0; index < cells.length; index += 7) rows.push(`<tr>${cells.slice(index, index + 7).join("")}</tr>`);
@@ -1362,7 +1412,7 @@ function renderDoctors() {
   doctorsEl.innerHTML = DOCTORS.map((id) => {
     const rule = state.rules[id];
     const chips = rule.blocked.map((day) => `
-      <button type="button" class="block is-exclude" data-doctor="${id}" data-day="${day}" aria-label="Clear excluded ${formatDay(parsed, day)} for ${id}">${day}</button>`).join("");
+      <button type="button" class="block is-exclude" data-doctor="${id}" data-day="${day}" aria-label="Clear excluded ${formatDate(parsed, day)} for ${id}">${day}</button>`).join("");
     const open = blockDoctor === id;
     return `
       <article class="doctor doctor-${id}">
@@ -1381,10 +1431,11 @@ function renderDoctors() {
   }).join("");
   renderCounts();
   renderBlockPanel();
+  syncRevealLock();
 }
 
 function issueText(parsed, issue) {
-  const when = (day) => formatDay(parsed, day);
+  const when = (day) => formatDate(parsed, day);
   if (issue.type === "consecutive") return `${issue.doctor} holds ${when(issue.days[0])} and ${when(issue.days[1])}.`;
   if (issue.type === "blocked") return `${issue.doctor} holds ${when(issue.days[0])}, which is an excluded date.`;
   if (issue.type === "ban") return `${issue.doctor} holds ${when(issue.days[0])}, which is an excluded weekday.`;
@@ -1448,7 +1499,10 @@ function renderBoard() {
   monthInput.setAttribute("aria-label", title);
   document.title = `${title} · Monthly shift`;
 
-  if (state.reason) {
+  if (revealing) {
+    statusEl.textContent = "No plan yet.";
+    statusEl.classList.remove("bad", "quiet");
+  } else if (state.reason) {
     statusEl.textContent = state.reason;
     statusEl.classList.add("bad");
     statusEl.classList.remove("quiet");
@@ -1465,19 +1519,19 @@ function renderBoard() {
     statusEl.classList.add("quiet");
   }
 
-  const selected = state.selected;
+  const selected = revealing ? null : state.selected;
   if (selected && state.grid) {
     const holder = state.grid[selected - 1];
     const others = DOCTORS.filter((id) => id !== holder).map((id) =>
       `<button type="button" class="choice doctor-${id}" data-reassign="${id}"><span class="dot" aria-hidden="true"></span>${id}</button>`).join("");
     chooserEl.hidden = false;
-    chooserEl.innerHTML = `<p>Give ${formatDay(parsed, selected)} to</p><div class="choices">${others}</div>`;
+    chooserEl.innerHTML = `<p>Give ${formatDate(parsed, selected)} to</p><div class="choices">${others}</div>`;
   } else {
     chooserEl.hidden = true;
     chooserEl.innerHTML = "";
   }
 
-  const cells = monthGrid(parsed).map((date) => {
+  const cells = monthGrid(parsed).map((date, index) => {
     const inMonth = date.getFullYear() === parsed.year && date.getMonth() === parsed.monthIndex;
     const weekend = date.getDay() === 0 || date.getDay() === 6;
     const isToday = date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
@@ -1497,10 +1551,13 @@ function renderBoard() {
     const seam = seams.get(day) || {};
     const corner = corners.has(day);
     const dim = focusDoctor && holder !== focusDoctor;
+    const row = Math.floor(index / 7);
+    const arrive = revealing ? ` style="animation-delay:${REVEAL_HOLD + row * REVEAL_GAP}ms"` : "";
     const dayClass = [
       "day",
       `doctor-${holder}`,
       dim ? "dim" : "",
+      revealing ? "arriving" : "",
       seam.left ? "seam-left" : "",
       seam.right ? "seam-right" : "",
       seam.sat ? "seam-sat" : "",
@@ -1509,7 +1566,7 @@ function renderBoard() {
     const notes = [];
     if (seam.left || seam.right || seam.sat || seam.sun) notes.push("consecutive");
     if (corner) notes.push("broken");
-    return `<td class="${tdClass}"><button type="button" class="${dayClass}" data-doctor="${holder}" data-select="${day}" aria-pressed="${pressed}"${isToday ? ` aria-current="date"` : ""} aria-label="${formatDay(parsed, day)}, ${holder}${notes.length ? `, ${notes.join(", ")}` : ""}">${num}<span class="holder">${holder}</span>${corner ? `<span class="corner" aria-hidden="true"></span>` : ""}</button></td>`;
+    return `<td class="${tdClass}"><button type="button" class="${dayClass}" data-doctor="${holder}" data-select="${day}" aria-pressed="${pressed}"${isToday ? ` aria-current="date"` : ""} aria-label="${formatDate(parsed, day)}, ${holder}${notes.length ? `, ${notes.join(", ")}` : ""}"${arrive}>${num}<span class="holder"${arrive}>${holder}</span>${corner ? `<span class="corner" aria-hidden="true"${arrive}></span>` : ""}</button></td>`;
   });
   const rows = [];
   for (let index = 0; index < cells.length; index += 7) rows.push(`<tr>${cells.slice(index, index + 7).join("")}</tr>`);
@@ -1517,15 +1574,51 @@ function renderBoard() {
   calendarEl.innerHTML = `<table aria-label="${gridLabel}"><thead><tr>${WEEKDAYS.map(([, label]) => `<th scope="col">${label}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table>`;
 
   renderCounts();
-  issuesEl.innerHTML = issues.length
+  issuesEl.innerHTML = !revealing && issues.length
     ? `<div class="issues"><p>Broken rules</p><ul>${issues.map((issue) => `<li>${issueText(parsed, issue)}</li>`).join("")}</ul></div>`
     : "";
   if (selected && state.grid) placeChooser();
-  copyButton.disabled = !state.grid;
+  copyButton.disabled = revealing || !state.grid;
+  syncRevealLock();
   if (!state.grid) {
     window.clearTimeout(copyTimer);
     copyButton.textContent = "Copy";
   }
+}
+
+function releaseGenerate() {
+  generateButton.disabled = false;
+  generateButton.textContent = "Generate";
+}
+
+function cancelReveal() {
+  window.clearTimeout(revealTimer);
+  revealTimer = 0;
+  revealing = false;
+  releaseGenerate();
+}
+
+function finishReveal(ticket) {
+  if (ticket !== generateTicket || !revealing) return;
+  revealing = false;
+  window.clearTimeout(revealTimer);
+  revealTimer = 0;
+  renderBoard();
+  releaseGenerate();
+  statusEl.focus?.();
+}
+
+function startReveal(ticket) {
+  revealing = true;
+  renderBoard();
+  const rows = calendarEl.querySelectorAll("tbody tr").length || 1;
+  const lastDay = calendarEl.querySelector("tbody tr:last-child .day.arriving");
+  const done = (event) => {
+    if (event && event.target !== lastDay) return;
+    finishReveal(ticket);
+  };
+  if (lastDay) lastDay.addEventListener("animationend", done);
+  revealTimer = window.setTimeout(done, REVEAL_HOLD + (rows - 1) * REVEAL_GAP + REVEAL_FADE + 60);
 }
 
 function setMonth(value) {
@@ -1534,6 +1627,8 @@ function setMonth(value) {
     monthInput.value = state.month;
     return;
   }
+  generateTicket += 1;
+  cancelReveal();
   state = { month: next.value, rules: blankRules(), grid: null, selected: null, reason: "" };
   focusDoctor = null;
   blockDoctor = null;
@@ -1580,31 +1675,41 @@ function showCopyResult(label) {
 }
 
 generateButton.addEventListener("click", () => {
+  const ticket = ++generateTicket;
   window.clearTimeout(copyTimer);
   copyButton.textContent = "Copy";
+  cancelReveal();
   generateButton.disabled = true;
   generateButton.textContent = "Working…";
   window.setTimeout(() => {
+    if (ticket !== generateTicket) return;
     const parsed = parseMonth(state.month);
     const result = solve(datedDays(parsed), state.rules);
     state.selected = null;
-    if (result.ok) {
-      state.grid = result.days;
-      state.reason = "";
-    } else {
+    if (!result.ok) {
       state.grid = null;
       state.reason = result.reason;
+      saveState();
+      renderBoard();
+      releaseGenerate();
+      statusEl.focus?.();
+      return;
     }
+    state.grid = result.days;
+    state.reason = "";
     saveState();
-    renderBoard();
-    generateButton.disabled = false;
-    generateButton.textContent = "Generate";
-    statusEl.focus?.();
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      renderBoard();
+      releaseGenerate();
+      statusEl.focus?.();
+      return;
+    }
+    startReveal(ticket);
   }, 20);
 });
 
 copyButton.addEventListener("click", async () => {
-  if (!state.grid) return;
+  if (revealing || !state.grid) return;
   const text = sheetText(parseMonth(state.month), state.grid);
   try {
     await navigator.clipboard.writeText(text);
@@ -1624,6 +1729,7 @@ function setBlocked(id, day, on) {
 
 doctorsEl.addEventListener("click", (event) => {
   event.stopPropagation();
+  if (revealing) return;
   const focus = event.target.closest("[data-focus]");
   if (focus) {
     const id = focus.dataset.focus;
@@ -1695,6 +1801,7 @@ doctorsEl.addEventListener("click", (event) => {
 
 blockPanelEl.addEventListener("click", (event) => {
   event.stopPropagation();
+  if (revealing) return;
   const pick = event.target.closest("[data-block-day]");
   if (!pick) return;
   const id = pick.dataset.doctor;
@@ -1707,6 +1814,7 @@ blockPanelEl.addEventListener("click", (event) => {
 });
 
 calendarEl.addEventListener("click", (event) => {
+  if (revealing) return;
   const button = event.target.closest("[data-select]");
   if (!button) return;
   const day = Number(button.dataset.select);
@@ -1721,6 +1829,7 @@ calendarEl.addEventListener("click", (event) => {
 });
 
 chooserEl.addEventListener("click", (event) => {
+  if (revealing) return;
   const button = event.target.closest("[data-reassign]");
   if (!button || !state.selected || !state.grid) return;
   state.grid[state.selected - 1] = button.dataset.reassign;
@@ -1731,6 +1840,7 @@ chooserEl.addEventListener("click", (event) => {
 });
 
 document.addEventListener("click", (event) => {
+  if (revealing) return;
   if ((blockDoctor || weekdayPick) && !event.target.closest("#doctors, #block-panel")) {
     blockDoctor = null;
     weekdayPick = null;
@@ -1743,7 +1853,7 @@ document.addEventListener("click", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
-  if (event.key !== "Escape") return;
+  if (event.key !== "Escape" || revealing) return;
   if (weekdayPick) {
     const { id, wd } = weekdayPick;
     weekdayPick = null;
