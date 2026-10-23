@@ -61,7 +61,7 @@
       padding: 9px 14px;
       cursor: pointer;
     }
-    button:focus-visible, select:focus-visible, input:focus-visible, .day:focus-visible, .block:focus-visible {
+    button:focus-visible, select:focus-visible, input:focus-visible, .day:focus-visible, .block:focus-visible, .wd:focus-visible, .rule-toggle:focus-visible {
       outline: 2px solid var(--accent);
       outline-offset: 2px;
     }
@@ -86,9 +86,23 @@
       .doctor { flex-basis: 100%; }
     }
     .doctor h2 { margin: 0 0 8px; font-size: 1.15rem; }
-    .weekdays { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
-    .weekdays label { display: grid; gap: 3px; font-size: 0.75rem; color: var(--muted); }
-    .weekdays select { width: 100%; padding: 6px 4px; }
+    .rules { display: grid; gap: 6px; }
+    .rule { display: grid; grid-template-columns: 3.2rem 1fr; gap: 6px; align-items: start; }
+    .rule-toggle, .wd {
+      background: white;
+      border: 1px solid var(--line);
+      color: var(--ink);
+      padding: 4px 0;
+      font-size: 0.78rem;
+    }
+    .rule-toggle { width: 100%; }
+    .rule-toggle[aria-expanded="true"], .wd[aria-pressed="true"] {
+      background: var(--ink);
+      color: white;
+      border-color: var(--ink);
+    }
+    .rule-days { display: flex; flex-wrap: wrap; gap: 4px; }
+    .wd { min-width: 2rem; }
     .hint { margin: 8px 0; color: var(--muted); font-size: 0.82rem; }
     .blocks { display: flex; flex-wrap: wrap; gap: 4px; }
     .block, .choice, .day {
@@ -632,6 +646,7 @@ const countsEl = document.querySelector("#counts");
 const issuesEl = document.querySelector("#issues");
 
 let state = loadState();
+let openRules = {};
 
 function currentMonthValue() {
   const now = new Date();
@@ -693,26 +708,32 @@ function formatDay(parsed, day) {
   });
 }
 
+const RULE_LABEL = { ban: "Ban", cap: "Cap" };
+
+function ruleRow(id, rule, mode) {
+  const open = Boolean(openRules[id]?.[mode]);
+  const days = WEEKDAYS.filter(([wd]) => rule.mode[wd] === mode || (open && rule.mode[wd] === "free"));
+  const chips = days.map(([wd, label]) => `
+    <button type="button" class="wd" data-doctor="${id}" data-mode="${mode}" data-weekday="${wd}" aria-pressed="${rule.mode[wd] === mode}" aria-label="${RULE_LABEL[mode]} ${WEEKDAY_NAME[wd]} for ${id}">${label}</button>`).join("");
+  return `
+    <div class="rule">
+      <button type="button" class="rule-toggle" data-doctor="${id}" data-rule="${mode}" aria-expanded="${open}" aria-label="${RULE_LABEL[mode]} weekdays for ${id}">${RULE_LABEL[mode]}</button>
+      <div class="rule-days">${chips}</div>
+    </div>`;
+}
+
 function renderDoctors() {
   const parsed = parseMonth(state.month);
   const days = datedDays(parsed);
   doctorsEl.innerHTML = DOCTORS.map((id) => {
     const rule = state.rules[id];
     const blocked = new Set(rule.blocked);
-    const weekdayFields = WEEKDAYS.map(([wd, label]) => `
-      <label>${label}
-        <select data-doctor="${id}" data-weekday="${wd}" aria-label="${id} ${WEEKDAY_NAME[wd]}">
-          <option value="free"${rule.mode[wd] === "free" ? " selected" : ""}>Free</option>
-          <option value="ban"${rule.mode[wd] === "ban" ? " selected" : ""}>Ban</option>
-          <option value="cap"${rule.mode[wd] === "cap" ? " selected" : ""}>Cap</option>
-        </select>
-      </label>`).join("");
     const blocks = days.map((item) => `
       <button type="button" class="block" data-doctor="${id}" data-day="${item.day}" aria-pressed="${blocked.has(item.day)}" aria-label="Block ${formatDay(parsed, item.day)} for ${id}">${item.day}</button>`).join("");
     return `
       <article class="doctor doctor-${id}">
         <h2 class="badge">${id}</h2>
-        <div class="weekdays">${weekdayFields}</div>
+        <div class="rules">${ruleRow(id, rule, "ban")}${ruleRow(id, rule, "cap")}</div>
         <p class="hint">Ban never. Cap at most once. Blocked dates stay Non-shift.</p>
         <div class="blocks">${blocks}</div>
       </article>`;
@@ -797,6 +818,7 @@ monthInput.addEventListener("change", () => {
     return;
   }
   state = { month: next.value, rules: blankRules(), grid: null, selected: null, reason: "" };
+  openRules = {};
   saveState();
   renderDoctors();
   renderBoard();
@@ -824,15 +846,31 @@ generateButton.addEventListener("click", () => {
   }, 20);
 });
 
-doctorsEl.addEventListener("change", (event) => {
-  const select = event.target.closest("select");
-  if (!select) return;
-  state.rules[select.dataset.doctor].mode[select.dataset.weekday] = select.value;
-  saveState();
-  renderBoard();
-});
-
 doctorsEl.addEventListener("click", (event) => {
+  const toggle = event.target.closest("[data-rule]");
+  if (toggle) {
+    const id = toggle.dataset.doctor;
+    const mode = toggle.dataset.rule;
+    const open = openRules[id] || (openRules[id] = {});
+    open[mode] = !open[mode];
+    renderDoctors();
+    doctorsEl.querySelector(`[data-doctor="${id}"][data-rule="${mode}"]`)?.focus();
+    return;
+  }
+  const weekday = event.target.closest("[data-weekday]");
+  if (weekday) {
+    const id = weekday.dataset.doctor;
+    const mode = weekday.dataset.mode;
+    const wd = Number(weekday.dataset.weekday);
+    const rule = state.rules[id];
+    rule.mode[wd] = rule.mode[wd] === mode ? "free" : mode;
+    if (openRules[id]) openRules[id][mode] = false;
+    saveState();
+    renderDoctors();
+    renderBoard();
+    doctorsEl.querySelector(`[data-doctor="${id}"][data-rule="${mode}"]`)?.focus();
+    return;
+  }
   const button = event.target.closest(".block");
   if (!button) return;
   const id = button.dataset.doctor;
