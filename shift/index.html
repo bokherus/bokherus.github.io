@@ -7,181 +7,386 @@
   <style>
     :root {
       color-scheme: light;
-      --paper: #f3ecdf;
-      --ink: #1d1914;
-      --muted: #5e564c;
-      --card: #fffaf3;
-      --line: #e2d6c4;
-      --accent: #1f6f4a;
-      --bad: #8d2e2e;
-      --bad-bg: #f8e4dc;
-      --a: #0f6e6b;
-      --b: #b4532a;
-      --c: #243e73;
-      --d: #5d6b22;
+      --ink: #1d1d1f;
+      --muted: #8e8e93;
+      --line: #e6e6e8;
+      --sidebar: #f5f5f7;
+      --weekend: #f6f6f8;
+      --accent: #007aff;
+      --today: #ff3b30;
+      --bad: #d70015;
+      --bad-bg: #ffebe9;
+      --field: #f2f2f7;
     }
     * { box-sizing: border-box; }
+    html, body { height: 100%; }
     body {
       margin: 0;
-      background: var(--paper);
-      color: var(--ink);
-      font: 16px/1.45 "Segoe UI", system-ui, sans-serif;
-    }
-    header, main { width: min(1480px, calc(100% - 32px)); margin: 0 auto; }
-    header {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: end;
-      justify-content: space-between;
-      gap: 16px;
-      padding: 28px 0 18px;
-    }
-    h1 {
-      margin: 0;
-      font-family: Palatino, "Iowan Old Style", Georgia, serif;
-      font-size: 2rem;
-      font-weight: 600;
-      letter-spacing: -0.03em;
-    }
-    .controls { display: flex; gap: 10px; align-items: end; }
-    label.field { display: grid; gap: 4px; font-size: 0.85rem; color: var(--muted); }
-    input[type="month"], select {
-      font: inherit;
-      color: var(--ink);
       background: white;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 8px 10px;
+      color: var(--ink);
+      font: 13px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
     }
-    button {
-      font: inherit;
-      border: 0;
-      border-radius: 8px;
-      padding: 9px 14px;
-      cursor: pointer;
-    }
-    button:focus-visible, select:focus-visible, input:focus-visible, .day:focus-visible, .block:focus-visible, .wd:focus-visible, .rule-toggle:focus-visible {
+    button, input { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible {
       outline: 2px solid var(--accent);
       outline-offset: 2px;
     }
-    #generate { background: var(--accent); color: white; font-weight: 650; }
-    #generate:disabled { opacity: 0.6; cursor: wait; }
-    .layout { display: flex; flex-direction: column; gap: 22px; padding-bottom: 48px; }
-    #doctors { display: flex; gap: 12px; align-items: stretch; }
-    .doctor {
-      flex: 1 1 0;
-      min-width: 0;
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-top: 4px solid var(--tone);
-      border-radius: 12px;
-      padding: 12px 12px 14px;
+    .app {
+      height: 100%;
+      display: grid;
+      grid-template-columns: 300px minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr);
+      grid-template-areas:
+        "sidebar toolbar"
+        "sidebar stage";
     }
-    @media (max-width: 1100px) {
-      #doctors { flex-wrap: wrap; }
-      .doctor { flex: 1 1 calc(50% - 12px); }
+    .sidebar {
+      grid-area: sidebar;
+      background: var(--sidebar);
+      border-right: 1px solid var(--line);
+      overflow: auto;
+      padding: 18px 12px 28px;
     }
-    @media (max-width: 640px) {
-      .doctor { flex-basis: 100%; }
+    .side-label {
+      margin: 6px 8px 4px;
+      font-size: 11px;
+      font-weight: 650;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--muted);
     }
-    .doctor h2 { margin: 0 0 8px; font-size: 1.15rem; }
+    .doctor { padding: 10px 8px 12px; }
+    .doctor + .doctor { border-top: 1px solid var(--line); }
+    .doctor h2 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 8px;
+      font-size: 13px;
+      font-weight: 650;
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--tone);
+      box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.15);
+      flex: none;
+    }
+    .count {
+      margin-left: auto;
+      color: var(--muted);
+      font-weight: 500;
+      font-variant-numeric: tabular-nums;
+    }
     .rules { display: grid; gap: 6px; }
-    .rule { display: grid; grid-template-columns: 3.2rem 1fr; gap: 6px; align-items: start; }
-    .rule-toggle, .wd {
+    .rule { display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 6px; align-items: start; }
+    .rule-toggle, .wd, .block {
       background: white;
-      border: 1px solid var(--line);
+      border: 1px solid #d2d2d7;
+      border-radius: 6px;
       color: var(--ink);
-      padding: 4px 0;
-      font-size: 0.78rem;
     }
-    .rule-toggle { width: 100%; }
-    .rule-toggle[aria-expanded="true"], .wd[aria-pressed="true"] {
-      background: var(--ink);
+    .rule-toggle { width: 100%; height: 22px; padding: 0; font-size: 12px; font-weight: 590; }
+    .rule-days, .blocks { display: flex; flex-wrap: wrap; gap: 4px; }
+    .wd, .block {
+      min-width: 28px;
+      height: 22px;
+      padding: 0 4px;
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+    }
+    .rule-toggle[aria-expanded="true"], .wd[aria-pressed="true"], .block[aria-pressed="true"] {
+      background: var(--tone);
+      border-color: transparent;
       color: white;
-      border-color: var(--ink);
     }
-    .rule-days { display: flex; flex-wrap: wrap; gap: 4px; }
-    .wd { min-width: 2rem; }
-    .hint { margin: 8px 0; color: var(--muted); font-size: 0.82rem; }
-    .blocks { display: flex; flex-wrap: wrap; gap: 4px; }
-    .block, .choice, .day {
+    .blocks-label {
+      width: 100%;
+      margin-top: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+    }
+    .issues { margin: 8px 4px 0; }
+    .issues p {
+      margin: 0 0 6px;
+      font-size: 11px;
+      font-weight: 650;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--bad);
+    }
+    .issues ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+    .issues li {
       background: white;
-      border: 1px solid var(--line);
-      color: var(--ink);
+      border: 1px solid #ffd0cc;
+      border-radius: 8px;
+      padding: 7px 8px;
+      font-size: 12px;
+      line-height: 1.35;
     }
-    .block { min-width: 2.1rem; padding: 4px 0; }
-    .block[aria-pressed="true"] { background: var(--ink); color: white; border-color: var(--ink); }
-    .board {
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      padding: 14px;
+    .toolbar {
+      grid-area: toolbar;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px 18px 8px 16px;
+      background: white;
     }
-    .status { margin: 0 0 12px; }
-    .status.bad { color: var(--bad); }
-    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-    th { font-size: 0.75rem; font-weight: 600; color: var(--muted); text-align: center; padding-bottom: 6px; }
-    td { padding: 3px; vertical-align: top; height: 4.4rem; }
-    .day {
+    .title-block { position: relative; min-width: 0; flex: 1; }
+    .title-wrap { display: inline-grid; }
+    .title-wrap h1, .title-wrap input { grid-area: 1 / 1; }
+    h1 {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+      font-size: 30px;
+      line-height: 1.05;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+    }
+    .title-wrap input {
       width: 100%;
       height: 100%;
-      min-height: 3.6rem;
+      margin: 0;
+      opacity: 0;
+      border: 0;
+      padding: 0;
+      cursor: pointer;
+    }
+    .title-wrap:focus-within h1 {
+      outline: 2px solid var(--accent);
+      outline-offset: 4px;
+      border-radius: 6px;
+    }
+    .status { margin: 3px 0 0; max-width: 560px; font-size: 12px; color: var(--muted); }
+    .status.bad { color: var(--bad); }
+    .status.quiet {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+    .toolbar-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+    .nav { display: inline-flex; align-items: center; gap: 4px; }
+    .nav button {
+      height: 28px;
+      border: 0;
       border-radius: 8px;
+      background: var(--field);
+      color: var(--ink);
+      padding: 0 11px;
+      font-size: 13px;
+      font-weight: 510;
+    }
+    .nav button.icon {
+      width: 28px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+    }
+    .nav button:hover { background: #e8e8ed; }
+    .nav button:active { background: #dedee3; }
+    #generate {
+      height: 28px;
+      border: 0;
+      border-radius: 8px;
+      background: var(--accent);
+      color: white;
+      padding: 0 12px;
+      font-size: 13px;
+      font-weight: 590;
+    }
+    #generate:hover { background: #0071eb; }
+    #generate:disabled { opacity: 0.55; cursor: progress; }
+    .stage {
+      grid-area: stage;
+      position: relative;
+      min-height: 0;
+      background: white;
+      overflow: auto;
+    }
+    #calendar { height: 100%; user-select: none; }
+    table { width: 100%; height: 100%; border-collapse: collapse; table-layout: fixed; }
+    th {
+      height: 28px;
+      padding: 2px 0 8px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      text-align: center;
+      border-bottom: 1px solid var(--line);
+    }
+    td {
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      padding: 0;
+    }
+    tr td:last-child { border-right: 0; }
+    td.weekend { background: var(--weekend); }
+    .day, .cell {
+      width: 100%;
+      height: 100%;
+      min-height: 76px;
       display: flex;
       flex-direction: column;
+      align-items: stretch;
+      background: transparent;
+      border: 0;
+      padding: 0;
+      text-align: left;
+      color: inherit;
+    }
+    .day:hover { background: rgba(0, 0, 0, 0.035); }
+    .day[aria-pressed="true"] { background: rgba(0, 122, 255, 0.06); }
+    .day:focus-visible { outline-offset: -2px; }
+    .datenum {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 3px;
+      height: 28px;
+      font-size: 12px;
+      font-weight: 520;
+      color: var(--ink);
+    }
+    .datenum .n {
+      min-width: 22px;
+      height: 22px;
+      padding: 0 4px;
+      border-radius: 11px;
+      display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 2px;
+      font-weight: 520;
     }
-    .day small { font-size: 0.72rem; color: var(--muted); }
-    .day strong { font-size: 1.15rem; }
-    .day[data-doctor="A"] { background: #d7ebe9; }
-    .day[data-doctor="B"] { background: #f8e3d6; }
-    .day[data-doctor="C"] { background: #dce3f2; }
-    .day[data-doctor="D"] { background: #e5ecd4; }
-    .day[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--ink); }
-    .day.broken { box-shadow: inset 0 0 0 2px var(--bad); }
-    .chooser, .counts, .issues { margin-top: 14px; }
-    .chooser p, .counts p { margin: 0 0 8px; }
-    .choice { padding: 8px 12px; margin-right: 6px; }
-    .counts ol, .issues ul { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 8px; }
-    .counts li, .issues li {
+    .datenum .mon { font-weight: 520; }
+    .datenum.is-out { color: #c7c7cc; }
+    .datenum.is-today .n { background: var(--today); color: white; font-weight: 650; }
+    .datenum.is-selected:not(.is-today) .n { background: #d1d1d6; font-weight: 650; }
+    .event {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin: 0 6px;
+      height: 16px;
+      padding: 0 3px;
+      border-radius: 4px;
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 520;
+      line-height: 16px;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+    .event::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 2px;
+      background: var(--tone);
+      flex: none;
+    }
+    .event.on { background: var(--tone); color: white; font-weight: 650; }
+    .event.on::before { display: none; }
+    .event.broken { color: var(--bad); }
+    .event.broken::before { background: var(--bad); }
+    .event.on.broken { background: var(--today); color: white; }
+    #chooser {
+      position: absolute;
+      z-index: 5;
+      width: 228px;
+      padding: 12px;
+      border-radius: 12px;
       background: white;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      padding: 4px 10px;
+      box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 10px 28px rgba(0, 0, 0, 0.18);
     }
-    .issues ul { display: grid; gap: 6px; }
-    .issues li { border-radius: 8px; background: var(--bad-bg); border-color: #efc7bc; }
-    .doctor-A { --tone: var(--a); }
-    .doctor-B { --tone: var(--b); }
-    .doctor-C { --tone: var(--c); }
-    .doctor-D { --tone: var(--d); }
-    .badge { color: var(--tone); }
+    #chooser p {
+      margin: 0 0 8px;
+      font-size: 13px;
+      font-weight: 650;
+      letter-spacing: -0.01em;
+    }
+    .choices { display: grid; gap: 6px; }
+    .choice {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      height: 28px;
+      padding: 0 8px;
+      border: 0;
+      border-radius: 6px;
+      background: var(--tint);
+      color: var(--ink-tone);
+      font-size: 13px;
+      font-weight: 650;
+      text-align: left;
+    }
+    .choice .dot { width: 8px; height: 8px; }
+    .choice:hover { background: var(--tone); color: white; }
+    .choice:hover .dot { background: white; box-shadow: none; }
+    .doctor-A { --tone: #34c759; --tint: #e3f8e8; --ink-tone: #1d7a34; }
+    .doctor-B { --tone: #ff9500; --tint: #fff1dc; --ink-tone: #c45500; }
+    .doctor-C { --tone: #007aff; --tint: #e5f2ff; --ink-tone: #0058c4; }
+    .doctor-D { --tone: #af52de; --tint: #f7e8fc; --ink-tone: #8944ab; }
+    @media (max-width: 820px) {
+      body { overflow: auto; }
+      .app {
+        height: auto;
+        min-height: 100%;
+        display: flex;
+        flex-direction: column;
+      }
+      .toolbar { order: 1; align-items: flex-start; }
+      .stage { order: 2; min-height: 680px; }
+      .sidebar { order: 3; border-right: 0; border-bottom: 1px solid var(--line); }
+      .toolbar-actions { flex-wrap: wrap; justify-content: flex-end; }
+    }
   </style>
 </head>
 <body>
-  <header>
-    <div>
-      <h1>Monthly shift</h1>
-    </div>
-    <div class="controls">
-      <label class="field">Month
-        <input id="month" type="month" required>
-      </label>
-      <button id="generate" type="button">Generate</button>
-    </div>
-  </header>
-  <main class="layout">
-    <section id="doctors" aria-label="Personal rules"></section>
-    <section class="board" aria-label="Plan">
-      <p id="status" class="status" tabindex="-1" aria-live="polite">No plan yet.</p>
-      <div id="chooser"></div>
-      <div id="calendar"></div>
-      <div id="counts"></div>
+  <div class="app">
+    <aside class="sidebar">
+      <p class="side-label">Doctors</p>
+      <section id="doctors" aria-label="Personal rules"></section>
       <div id="issues"></div>
-    </section>
-  </main>
+    </aside>
+    <header class="toolbar">
+      <div class="title-block">
+        <div class="title-wrap">
+          <h1 id="month-title" aria-hidden="true"></h1>
+          <input id="month" type="month" required aria-label="Month">
+        </div>
+        <p id="status" class="status" tabindex="-1" aria-live="polite">No plan yet.</p>
+      </div>
+      <div class="toolbar-actions">
+        <div class="nav">
+          <button id="prev" class="icon" type="button" aria-label="Previous month">
+            <svg width="7" height="12" viewBox="0 0 7 12" aria-hidden="true"><path d="M6 1 1 6l5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button id="today" type="button">Today</button>
+          <button id="next" class="icon" type="button" aria-label="Next month">
+            <svg width="7" height="12" viewBox="0 0 7 12" aria-hidden="true"><path d="M1 1l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+        <button id="generate" type="button">Generate</button>
+      </div>
+    </header>
+    <main class="stage" aria-label="Plan">
+      <div id="calendar"></div>
+      <div id="chooser" hidden></div>
+    </main>
+  </div>
   <script>
 const DOCTORS = ["A", "B", "C", "D"];
 
@@ -631,16 +836,18 @@ function evaluate(days, rules, letters) {
 
 
 const STORAGE_KEY = "turbo-shift-v1";
-const WEEKDAYS = [[1, "Mon"], [2, "Tue"], [3, "Wed"], [4, "Thu"], [5, "Fri"], [6, "Sat"], [0, "Sun"]];
+const WEEKDAYS = [[0, "Sun"], [1, "Mon"], [2, "Tue"], [3, "Wed"], [4, "Thu"], [5, "Fri"], [6, "Sat"]];
 const WEEKDAY_NAME = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 const monthInput = document.querySelector("#month");
+const monthTitleEl = document.querySelector("#month-title");
 const generateButton = document.querySelector("#generate");
 const doctorsEl = document.querySelector("#doctors");
 const statusEl = document.querySelector("#status");
 const chooserEl = document.querySelector("#chooser");
 const calendarEl = document.querySelector("#calendar");
-const countsEl = document.querySelector("#counts");
 const issuesEl = document.querySelector("#issues");
 
 let state = loadState();
@@ -665,6 +872,22 @@ function datedDays(parsed) {
     year: parsed.year,
     monthIndex: parsed.monthIndex,
   }));
+}
+
+function beTitle(parsed) {
+  return `${MONTHS[parsed.monthIndex]} ${parsed.year + 543} BE`;
+}
+
+function monthGrid(parsed) {
+  const first = new Date(parsed.year, parsed.monthIndex, 1);
+  const last = new Date(parsed.year, parsed.monthIndex + 1, 0);
+  const start = new Date(parsed.year, parsed.monthIndex, 1 - first.getDay());
+  const end = new Date(parsed.year, parsed.monthIndex, last.getDate() + (6 - last.getDay()));
+  const dates = [];
+  for (let cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
+    dates.push(new Date(cursor));
+  }
+  return dates;
 }
 
 function loadState() {
@@ -720,6 +943,15 @@ function ruleRow(id, rule, mode) {
     </div>`;
 }
 
+function renderCounts() {
+  const tally = Object.fromEntries(DOCTORS.map((id) => [id, 0]));
+  if (state.grid) for (const id of state.grid) tally[id] += 1;
+  for (const id of DOCTORS) {
+    const el = doctorsEl.querySelector(`[data-count="${id}"]`);
+    if (el) el.textContent = state.grid ? String(tally[id]) : "";
+  }
+}
+
 function renderDoctors() {
   const parsed = parseMonth(state.month);
   const days = datedDays(parsed);
@@ -730,11 +962,12 @@ function renderDoctors() {
       <button type="button" class="block" data-doctor="${id}" data-day="${item.day}" aria-pressed="${blocked.has(item.day)}" aria-label="Block ${formatDay(parsed, item.day)} for ${id}">${item.day}</button>`).join("");
     return `
       <article class="doctor doctor-${id}">
-        <h2 class="badge">${id}</h2>
+        <h2><span class="dot" aria-hidden="true"></span>${id}<span class="count" data-count="${id}"></span></h2>
         <div class="rules">${ruleRow(id, rule, "ban")}${ruleRow(id, rule, "cap")}</div>
-        <div class="blocks">${blocks}</div>
+        <div class="blocks"><span class="blocks-label">Blocked</span>${blocks}</div>
       </article>`;
   }).join("");
+  renderCounts();
 }
 
 function issueText(parsed, issue) {
@@ -750,66 +983,102 @@ function issueText(parsed, issue) {
   return `Balance is missed. Shifts are ${counts}.`;
 }
 
+function placeChooser() {
+  const anchor = calendarEl.querySelector(`[data-select="${state.selected}"]`);
+  const stage = calendarEl.closest(".stage");
+  if (!anchor || !stage) return;
+  const a = anchor.getBoundingClientRect();
+  const s = stage.getBoundingClientRect();
+  const margin = 8;
+  const width = chooserEl.offsetWidth;
+  const height = chooserEl.offsetHeight;
+  let left = a.left - s.left + stage.scrollLeft + margin;
+  let top = a.bottom - s.top + stage.scrollTop + 6;
+  const limitX = stage.scrollLeft + s.width;
+  const limitY = stage.scrollTop + s.height;
+  if (left + width > limitX - margin) left = limitX - width - margin;
+  if (left < stage.scrollLeft + margin) left = stage.scrollLeft + margin;
+  if (top + height > limitY - margin) top = a.top - s.top + stage.scrollTop - height - 6;
+  if (top < stage.scrollTop + margin) top = stage.scrollTop + margin;
+  chooserEl.style.left = `${left}px`;
+  chooserEl.style.top = `${top}px`;
+}
+
 function renderBoard() {
   const parsed = parseMonth(state.month);
   const days = datedDays(parsed);
   const issues = state.grid ? evaluate(days, state.rules, state.grid) : [];
   const broken = new Set(issues.flatMap((issue) => issue.days || []));
+  const now = new Date();
+  const title = beTitle(parsed);
+
+  monthTitleEl.textContent = title;
+  monthInput.setAttribute("aria-label", title);
+  document.title = `${title} · Monthly shift`;
 
   if (state.reason) {
     statusEl.textContent = state.reason;
     statusEl.classList.add("bad");
+    statusEl.classList.remove("quiet");
   } else if (!state.grid) {
     statusEl.textContent = "No plan yet.";
-    statusEl.classList.remove("bad");
+    statusEl.classList.remove("bad", "quiet");
   } else if (issues.length) {
     statusEl.textContent = "This grid breaks a rule.";
     statusEl.classList.add("bad");
+    statusEl.classList.remove("quiet");
   } else {
     statusEl.textContent = "Plan ready.";
     statusEl.classList.remove("bad");
-  }
-
-  if (!state.grid) {
-    chooserEl.innerHTML = "";
-    calendarEl.innerHTML = "";
-    countsEl.innerHTML = "";
-    issuesEl.innerHTML = "";
-    return;
+    statusEl.classList.add("quiet");
   }
 
   const selected = state.selected;
-  if (selected) {
+  if (selected && state.grid) {
     const holder = state.grid[selected - 1];
     const others = DOCTORS.filter((id) => id !== holder).map((id) =>
-      `<button type="button" class="choice" data-reassign="${id}">${id}</button>`).join("");
-    chooserEl.innerHTML = `<p>Give ${formatDay(parsed, selected)} to</p><div>${others}</div>`;
+      `<button type="button" class="choice doctor-${id}" data-reassign="${id}"><span class="dot" aria-hidden="true"></span>${id}</button>`).join("");
+    chooserEl.hidden = false;
+    chooserEl.innerHTML = `<p>Give ${formatDay(parsed, selected)} to</p><div class="choices">${others}</div>`;
   } else {
+    chooserEl.hidden = true;
     chooserEl.innerHTML = "";
   }
 
-  const lead = (new Date(parsed.year, parsed.monthIndex, 1).getDay() + 6) % 7;
-  const cells = Array.from({ length: lead }, () => "<td></td>");
-  days.forEach((item) => {
-    const holder = state.grid[item.day - 1];
-    cells.push(`<td><button type="button" class="day${broken.has(item.day) ? " broken" : ""}" data-doctor="${holder}" data-select="${item.day}" aria-pressed="${selected === item.day}" aria-label="${formatDay(parsed, item.day)}, ${holder}"><small>${item.day}</small><strong>${holder}</strong></button></td>`);
+  const cells = monthGrid(parsed).map((date) => {
+    const inMonth = date.getFullYear() === parsed.year && date.getMonth() === parsed.monthIndex;
+    const weekend = date.getDay() === 0 || date.getDay() === 6;
+    const isToday = date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
+    const day = date.getDate();
+    const numClass = ["datenum"];
+    if (!inMonth) numClass.push("is-out");
+    if (isToday) numClass.push("is-today");
+    if (inMonth && selected === day) numClass.push("is-selected");
+    const mon = day === 1 ? `<span class="mon">${MONTHS_SHORT[date.getMonth()]}</span>` : "";
+    const num = `<span class="${numClass.join(" ")}"><span class="n">${day}</span>${mon}</span>`;
+    const tdClass = weekend ? "weekend" : "";
+    if (!inMonth || !state.grid) {
+      return `<td class="${tdClass}"><div class="cell"${isToday ? ` aria-current="date"` : ""}>${num}</div></td>`;
+    }
+    const holder = state.grid[day - 1];
+    const pressed = selected === day;
+    const isBroken = broken.has(day);
+    const eventClass = `event doctor-${holder}${pressed ? " on" : ""}${isBroken ? " broken" : ""}`;
+    return `<td class="${tdClass}"><button type="button" class="day${isBroken ? " broken" : ""}" data-doctor="${holder}" data-select="${day}" aria-pressed="${pressed}"${isToday ? ` aria-current="date"` : ""} aria-label="${formatDay(parsed, day)}, ${holder}">${num}<span class="${eventClass}">${holder}</span></button></td>`;
   });
-  while (cells.length % 7) cells.push("<td></td>");
   const rows = [];
   for (let index = 0; index < cells.length; index += 7) rows.push(`<tr>${cells.slice(index, index + 7).join("")}</tr>`);
-  calendarEl.innerHTML = `<table><caption class="hint">Shift holder for each date. Weeks start on Monday.</caption><thead><tr>${WEEKDAYS.map(([, label]) => `<th scope="col">${label}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table>`;
+  calendarEl.innerHTML = `<table aria-label="Shift holder for each date"><thead><tr>${WEEKDAYS.map(([, label]) => `<th scope="col">${label}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table>`;
 
-  const tally = Object.fromEntries(DOCTORS.map((id) => [id, 0]));
-  for (const id of state.grid) tally[id] += 1;
-  countsEl.innerHTML = `<p>Shifts</p><ol>${DOCTORS.map((id) => `<li class="badge doctor-${id}">${id} ${tally[id]}</li>`).join("")}</ol>`;
-
+  renderCounts();
   issuesEl.innerHTML = issues.length
     ? `<div class="issues"><p>Broken rules</p><ul>${issues.map((issue) => `<li>${issueText(parsed, issue)}</li>`).join("")}</ul></div>`
     : "";
+  if (selected && state.grid) placeChooser();
 }
 
-monthInput.addEventListener("change", () => {
-  const next = parseMonth(monthInput.value);
+function setMonth(value) {
+  const next = parseMonth(value);
   if (!next || next.value === state.month) {
     monthInput.value = state.month;
     return;
@@ -817,9 +1086,21 @@ monthInput.addEventListener("change", () => {
   state = { month: next.value, rules: blankRules(), grid: null, selected: null, reason: "" };
   openRules = {};
   saveState();
+  monthInput.value = state.month;
   renderDoctors();
   renderBoard();
-});
+}
+
+function shiftMonth(delta) {
+  const parsed = parseMonth(state.month);
+  const date = new Date(parsed.year, parsed.monthIndex + delta, 1);
+  setMonth(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`);
+}
+
+monthInput.addEventListener("change", () => setMonth(monthInput.value));
+document.querySelector("#prev").addEventListener("click", () => shiftMonth(-1));
+document.querySelector("#next").addEventListener("click", () => shiftMonth(1));
+document.querySelector("#today").addEventListener("click", () => setMonth(currentMonthValue()));
 
 generateButton.addEventListener("click", () => {
   generateButton.disabled = true;
@@ -887,6 +1168,7 @@ calendarEl.addEventListener("click", (event) => {
   const day = Number(button.dataset.select);
   state.selected = state.selected === day ? null : day;
   renderBoard();
+  event.stopPropagation();
 });
 
 chooserEl.addEventListener("click", (event) => {
@@ -897,6 +1179,23 @@ chooserEl.addEventListener("click", (event) => {
   state.reason = "";
   saveState();
   renderBoard();
+});
+
+document.addEventListener("click", (event) => {
+  if (!state.selected) return;
+  if (event.target.closest("[data-select], #chooser")) return;
+  state.selected = null;
+  renderBoard();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || !state.selected) return;
+  state.selected = null;
+  renderBoard();
+});
+
+window.addEventListener("resize", () => {
+  if (state.selected && state.grid) placeChooser();
 });
 
 monthInput.value = state.month;
