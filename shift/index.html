@@ -361,20 +361,6 @@
     }
     #generate:hover { background: #0071eb; }
     #generate:disabled { opacity: 0.55; cursor: progress; }
-    #copy {
-      height: 28px;
-      min-width: 72px;
-      border: 0;
-      border-radius: 8px;
-      background: var(--field);
-      color: var(--ink);
-      padding: 0 12px;
-      font-size: 13px;
-      font-weight: 590;
-    }
-    #copy:hover { background: #e8e8ed; }
-    #copy:disabled,
-    #copy:disabled:hover { opacity: 0.55; background: var(--field); cursor: default; }
     .stage {
       grid-area: stage;
       position: relative;
@@ -564,11 +550,10 @@
           <h1 id="month-title" aria-hidden="true"></h1>
           <input id="month" type="month" required aria-label="Month">
         </div>
-        <p id="status" class="status" tabindex="-1" aria-live="polite">No plan yet.</p>
+        <p id="status" class="status quiet" tabindex="-1" aria-live="polite"></p>
       </div>
       <div class="toolbar-actions">
         <button id="generate" type="button" hidden>Regenerate</button>
-        <button id="copy" type="button" hidden>Copy</button>
         <div class="nav">
           <button id="prev" class="icon" type="button" aria-label="Previous month">
             <svg width="7" height="12" viewBox="0 0 7 12" aria-hidden="true"><path d="M6 1 1 6l5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -1211,8 +1196,7 @@ const monthInput = document.querySelector("#month");
 const monthTitleEl = document.querySelector("#month-title");
 const generateButton = document.querySelector("#generate");
 const veilButton = document.querySelector("#veil-generate");
-const copyButton = document.querySelector("#copy");
-let copyTimer = 0;
+let copyNote = "";
 const doctorsEl = document.querySelector("#doctors");
 const statusEl = document.querySelector("#status");
 const chooserEl = document.querySelector("#chooser");
@@ -1230,6 +1214,7 @@ let pending = false;
 let generateTicket = 0;
 let veilTimer = 0;
 const BLUR_MS = 520;
+const CTA_FADE_MS = 180;
 const HOLD_MS = 280;
 const appEl = document.querySelector(".app");
 
@@ -1357,10 +1342,8 @@ function syncChrome() {
   chooserEl.toggleAttribute("inert", veil !== "sharp");
   calendarEl.setAttribute("aria-busy", veil === "sharp" ? "false" : "true");
   generateButton.hidden = !showActions;
-  copyButton.hidden = !showActions;
   generateButton.disabled = pending || veil !== "sharp";
   generateButton.textContent = "Regenerate";
-  copyButton.disabled = pending || veil !== "sharp" || !state.grid;
   veilButton.hidden = !showCta;
 }
 
@@ -1516,24 +1499,20 @@ function renderBoard() {
   monthInput.setAttribute("aria-label", title);
   document.title = `${title} · Monthly shift`;
 
-  const busy = veil === "blurring" || veil === "holding" || veil === "clearing";
-  if (busy && !state.reason) {
-    statusEl.textContent = state.grid ? "Plan ready." : "No plan yet.";
-    statusEl.classList.remove("bad");
-    statusEl.classList.add("quiet");
-  } else if (state.reason) {
+  if (state.reason) {
     statusEl.textContent = state.reason;
     statusEl.classList.add("bad");
     statusEl.classList.remove("quiet");
-  } else if (!state.grid) {
-    statusEl.textContent = "No plan yet.";
-    statusEl.classList.remove("bad", "quiet");
-  } else if (issues.length) {
+  } else if (veil === "sharp" && issues.length) {
     statusEl.textContent = "This grid breaks a rule.";
     statusEl.classList.add("bad");
     statusEl.classList.remove("quiet");
+  } else if (veil === "sharp" && copyNote) {
+    statusEl.textContent = copyNote;
+    statusEl.classList.add("bad");
+    statusEl.classList.remove("quiet");
   } else {
-    statusEl.textContent = "Plan ready.";
+    statusEl.textContent = "";
     statusEl.classList.remove("bad");
     statusEl.classList.add("quiet");
   }
@@ -1594,10 +1573,6 @@ function renderBoard() {
     ? `<div class="issues"><p>Broken rules</p><ul>${issues.map((issue) => `<li>${issueText(parsed, issue)}</li>`).join("")}</ul></div>`
     : "";
   if (selected && state.grid) placeChooser();
-  if (!state.grid) {
-    window.clearTimeout(copyTimer);
-    copyButton.textContent = "Copy";
-  }
   syncChrome();
 }
 
@@ -1632,7 +1607,7 @@ function fadeOutCta() {
   }
   const anim = veilButton.animate(
     [{ opacity: 1 }, { opacity: 0 }],
-    { duration: BLUR_MS, easing: "ease-in-out", fill: "forwards" }
+    { duration: CTA_FADE_MS, easing: "ease-out", fill: "forwards" }
   );
   return anim.finished.then(() => {
     veilButton.hidden = true;
@@ -1664,27 +1639,12 @@ function beginClear(ticket) {
   calendarEl.style.filter = "blur(8px)";
   const fade = fadeOutCta();
   syncChrome();
-    playBlur("none").then(() => fade).then(() => finishVeil(ticket)).catch(() => {});
+  playBlur("none").then(() => fade).then(() => finishVeil(ticket)).catch(() => {});
 }
 
-function paintAtPeak(ticket) {
+function revealSolved(ticket, days) {
   if (ticket !== generateTicket) return;
-  const parsed = parseMonth(state.month);
-  const result = solve(datedDays(parsed), state.rules);
-  state.selected = null;
-  if (!result.ok) {
-    state.grid = null;
-    state.reason = result.reason;
-    fromPlan = false;
-    pending = false;
-    veil = "veiled";
-    stopBlur();
-    saveState();
-    renderBoard();
-    statusEl.focus?.();
-    return;
-  }
-  state.grid = result.days;
+  state.grid = days;
   state.reason = "";
   saveState();
   if (prefersReducedMotion()) {
@@ -1706,28 +1666,40 @@ function requestGenerate() {
   if (pending) return;
   const ticket = ++generateTicket;
   pending = true;
-  window.clearTimeout(copyTimer);
-  copyButton.textContent = "Copy";
   window.clearTimeout(veilTimer);
+  copyNote = "";
   fromPlan = Boolean(state.grid);
   state.selected = null;
   chooserEl.hidden = true;
   chooserEl.innerHTML = "";
   statusEl.classList.remove("bad");
   statusEl.classList.add("quiet");
+  const parsed = parseMonth(state.month);
+  const result = solve(datedDays(parsed), state.rules);
+  if (!result.ok) {
+    state.grid = null;
+    state.reason = result.reason;
+    fromPlan = false;
+    pending = false;
+    veil = "veiled";
+    stopBlur();
+    saveState();
+    renderBoard();
+    statusEl.focus?.();
+    return;
+  }
+  copyRoster(result.days);
   if (fromPlan && !prefersReducedMotion()) {
     veil = "blurring";
     syncChrome();
     playBlur("blur(8px)").then(() => {
       if (ticket !== generateTicket) return;
       calendarEl.style.filter = "";
-      paintAtPeak(ticket);
+      revealSolved(ticket, result.days);
     }).catch(() => {});
     return;
   }
-  if (!fromPlan && !prefersReducedMotion()) veil = "holding";
-  syncChrome();
-  window.setTimeout(() => paintAtPeak(ticket), 20);
+  revealSolved(ticket, result.days);
 }
 
 function setMonth(value) {
@@ -1743,6 +1715,7 @@ function setMonth(value) {
   focusDoctor = null;
   blockDoctor = null;
   weekdayPick = null;
+  copyNote = "";
   saveState();
   monthInput.value = state.month;
   renderDoctors();
@@ -1776,27 +1749,18 @@ function sheetText(parsed, grid) {
   return lines.join("\n");
 }
 
-function showCopyResult(label) {
-  window.clearTimeout(copyTimer);
-  copyButton.textContent = label;
-  copyTimer = window.setTimeout(() => {
-    copyButton.textContent = "Copy";
-  }, 2000);
+function copyRoster(grid) {
+  const text = sheetText(parseMonth(state.month), grid);
+  const ticket = generateTicket;
+  navigator.clipboard.writeText(text).catch(() => {
+    if (ticket !== generateTicket) return;
+    copyNote = "Couldn't copy.";
+    if (veil === "sharp") renderBoard();
+  });
 }
 
 generateButton.addEventListener("click", requestGenerate);
 veilButton.addEventListener("click", requestGenerate);
-
-copyButton.addEventListener("click", async () => {
-  if (veil !== "sharp" || !state.grid) return;
-  const text = sheetText(parseMonth(state.month), state.grid);
-  try {
-    await navigator.clipboard.writeText(text);
-    showCopyResult("Copied");
-  } catch {
-    showCopyResult("Failed");
-  }
-});
 
 function setBlocked(id, day, on) {
   const blocked = new Set(state.rules[id].blocked);
