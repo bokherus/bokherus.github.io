@@ -1700,7 +1700,6 @@ function setBlocked(id, day, on) {
 }
 
 doctorsEl.addEventListener("click", (event) => {
-  event.stopPropagation();
   const focus = event.target.closest("[data-focus]");
   if (focus) {
     const id = focus.dataset.focus;
@@ -1786,7 +1785,7 @@ chooserEl.addEventListener("click", (event) => {
 });
 
 document.addEventListener("click", (event) => {
-  if (blockDoctor && !event.target.closest("#doctors, #block-panel")) {
+  if (blockDoctor && !event.target.closest("#block-panel, [data-block-add]")) {
     blockDoctor = null;
     renderDoctors();
   }
