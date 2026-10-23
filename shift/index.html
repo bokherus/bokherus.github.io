@@ -766,7 +766,133 @@ function talliesToKey(tallies) {
   return key;
 }
 
-function searchLimit(ctx, limit, rng) {
+function isWeekendDay(weekday) {
+  return weekday === 0 || weekday === 6;
+}
+
+function perfectWeekend(ctx) {
+  let weekendDays = 0;
+  for (let day = 1; day <= ctx.n; day += 1) {
+    if (isWeekendDay(ctx.weekday[day])) weekendDays += 1;
+  }
+  const base = Math.floor(weekendDays / 4);
+  const extra = weekendDays % 4;
+  const key = [0, 0, 0, 0];
+  for (let i = 0; i < 4; i += 1) key[i] = base + (i < extra ? 1 : 0);
+  return key;
+}
+
+function weekendKey(assignment, days) {
+  const counts = [0, 0, 0, 0];
+  for (let index = 0; index < assignment.length; index += 1) {
+    if (isWeekendDay(days[index].weekday)) counts[assignment[index]] += 1;
+  }
+  counts.sort((a, b) => b - a);
+  return counts;
+}
+
+function betterWeekend(a, b) {
+  for (let i = 0; i < 4; i += 1) if (a[i] !== b[i]) return a[i] < b[i];
+  return false;
+}
+
+function weekendPerms(target) {
+  const values = target.slice().sort((a, b) => a - b);
+  const out = [];
+  const used = [0, 0, 0, 0];
+  const perm = [0, 0, 0, 0];
+  function rec(index) {
+    if (index === 4) {
+      out.push(perm.slice());
+      return;
+    }
+    for (let slot = 0; slot < 4; slot += 1) {
+      if (used[slot]) continue;
+      if (slot > 0 && values[slot] === values[slot - 1] && !used[slot - 1]) continue;
+      used[slot] = 1;
+      perm[index] = values[slot];
+      rec(index + 1);
+      used[slot] = 0;
+    }
+  }
+  rec(0);
+  return out;
+}
+
+function canReachWeekend(partial, perms) {
+  for (let p = 0; p < perms.length; p += 1) {
+    const perm = perms[p];
+    let fits = true;
+    for (let doctor = 0; doctor < 4; doctor += 1) {
+      if (partial[doctor] > perm[doctor]) {
+        fits = false;
+        break;
+      }
+    }
+    if (fits) return true;
+  }
+  return false;
+}
+
+function discoverWeekend(ctx) {
+  const { n, maxCount, minCount, weekday, mode } = ctx;
+  const slots = [];
+  const slotAt = [0, 1, 2, 3].map(() => new Int8Array(7).fill(-1));
+  for (let doctor = 0; doctor < 4; doctor += 1) {
+    for (let wd = 0; wd < 7; wd += 1) {
+      if (mode[doctor][wd] === 2) {
+        slotAt[doctor][wd] = slots.length;
+        slots.push(1);
+      }
+    }
+  }
+
+  let layer = new Map();
+  layer.set(`0000|-1|0000|${"0".repeat(slots.length)}`, {
+    counts: [0, 0, 0, 0],
+    last: -1,
+    weekends: [0, 0, 0, 0],
+    cap: slots.length ? new Uint8Array(slots.length) : new Uint8Array(0),
+  });
+  let nodes = 1;
+
+  for (let day = 1; day <= n; day += 1) {
+    const next = new Map();
+    const wd = weekday[day];
+    const weekend = isWeekendDay(wd);
+    for (const state of layer.values()) {
+      for (let doctor = 0; doctor < 4; doctor += 1) {
+        if (state.last === doctor) continue;
+        if (!canHold(ctx, doctor, day) || state.counts[doctor] >= maxCount) continue;
+        const slot = slots.length ? slotAt[doctor][wd] : -1;
+        if (slot >= 0 && state.cap[slot]) continue;
+        const newWeekends = state.weekends.slice();
+        if (weekend) newWeekends[doctor] += 1;
+        const newCounts = state.counts.slice();
+        newCounts[doctor] += 1;
+        const newCap = state.cap.slice();
+        if (slot >= 0) newCap[slot] = 1;
+        const key = `${newCounts.join("")}|${doctor}|${newWeekends.join("")}|${newCap.join("")}`;
+        if (next.has(key)) continue;
+        next.set(key, { counts: newCounts, last: doctor, weekends: newWeekends, cap: newCap });
+      }
+    }
+    nodes += next.size;
+    if (next.size === 0) return { key: null, nodes };
+    layer = next;
+  }
+
+  let best = null;
+  for (const state of layer.values()) {
+    if (state.counts.some((value) => value < minCount)) continue;
+    const key = state.weekends.slice().sort((a, b) => b - a);
+    if (!best || betterWeekend(key, best)) best = key;
+  }
+  return { key: best, nodes };
+}
+
+function searchLimit(ctx, limit, rng, target) {
+  const perms = weekendPerms(target);
   const { n, maxCount, minCount, weekday, mode } = ctx;
   const history = limit + 1;
   const window = limit + 1;
@@ -783,10 +909,11 @@ function searchLimit(ctx, limit, rng) {
 
   const layers = [];
   let layer = new Map();
-  layer.set(`0000||${"0".repeat(slots.length)}`, {
+  layer.set(`0000||${"0".repeat(slots.length)}|0000`, {
     hist: [],
     counts: [0, 0, 0, 0],
     cap: slots.length ? new Uint8Array(slots.length) : new Uint8Array(0),
+    weekends: [0, 0, 0, 0],
     tallies: new Uint16Array(limit + 1),
     ways: 1,
     pred: [0, 0, 0, 0],
@@ -803,6 +930,11 @@ function searchLimit(ctx, limit, rng) {
         if (!canHold(ctx, doctor, day) || state.counts[doctor] >= maxCount) continue;
         const slot = slots.length ? slotAt[doctor][wd] : -1;
         if (slot >= 0 && state.cap[slot]) continue;
+        const newWeekends = state.weekends.slice();
+        if (isWeekendDay(wd)) {
+          newWeekends[doctor] += 1;
+          if (!canReachWeekend(newWeekends, perms)) continue;
+        }
 
         let prevDay = 0;
         for (let index = 0; index < state.hist.length; index += 1) {
@@ -830,7 +962,7 @@ function searchLimit(ctx, limit, rng) {
         newCounts[doctor] += 1;
         const newCap = state.cap.slice();
         if (slot >= 0) newCap[slot] = 1;
-        const key = `${newCounts.join("")}|${newHist.join("")}|${newCap.join("")}`;
+        const key = `${newCounts.join("")}|${newHist.join("")}|${newCap.join("")}|${newWeekends.join("")}`;
         const dropped = dropping ? state.hist[0] : -1;
         const existing = next.get(key);
         if (!existing || betterTallies(tallies, existing.tallies)) {
@@ -840,6 +972,7 @@ function searchLimit(ctx, limit, rng) {
             hist: newHist,
             counts: newCounts,
             cap: newCap,
+            weekends: newWeekends,
             tallies,
             ways: state.ways,
             pred,
@@ -861,6 +994,10 @@ function searchLimit(ctx, limit, rng) {
   const endings = [];
   for (const state of layer.values()) {
     if (state.counts.some((value, doctor) => value < minCount)) continue;
+    const sortedWeekends = state.weekends.slice().sort((a, b) => b - a);
+    let reached = true;
+    for (let i = 0; i < 4; i += 1) if (sortedWeekends[i] !== target[i]) reached = false;
+    if (!reached) continue;
     const finalTallies = state.tallies.slice();
     for (let doctor = 0; doctor < 4; doctor += 1) {
       let lastDay = 0;
@@ -915,7 +1052,9 @@ function searchLimit(ctx, limit, rng) {
     const prevCap = state.cap.slice();
     const slot = slotAt[doctor][weekday[day]];
     if (slot >= 0) prevCap[slot] = 0;
-    const prevKey = `${prevCounts.join("")}|${prevHist.join("")}|${prevCap.join("")}`;
+    const prevWeekends = state.weekends.slice();
+    if (isWeekendDay(weekday[day])) prevWeekends[doctor] -= 1;
+    const prevKey = `${prevCounts.join("")}|${prevHist.join("")}|${prevCap.join("")}|${prevWeekends.join("")}`;
     state = layers[day - 1].get(prevKey);
   }
 
@@ -940,14 +1079,42 @@ function solve(days, rules, rng = Math.random) {
     };
   }
   let nodes = 0;
+  const perfect = perfectWeekend(ctx);
+  const quick = searchLimit(ctx, lower, rng, perfect);
+  nodes += quick.nodes;
+  if (quick.chosen) {
+    return {
+      ok: true,
+      days: quick.chosen.map((doctor) => DOCTORS[doctor]),
+      key: quick.key,
+      weekend: perfect,
+      nodes,
+      ties: quick.ties,
+      truncated: false,
+      lower,
+    };
+  }
+  const discovered = discoverWeekend(ctx);
+  nodes += discovered.nodes;
+  if (!discovered.key) {
+    return {
+      ok: false,
+      reason: "No plan meets these rules. Consecutive Shifts and the personal rules cannot be satisfied together.",
+      nodes,
+      ties: 0,
+      truncated: false,
+      lower,
+    };
+  }
   for (let limit = lower; limit <= ctx.n; limit += 1) {
-    const found = searchLimit(ctx, limit, rng);
+    const found = searchLimit(ctx, limit, rng, discovered.key);
     nodes += found.nodes;
     if (!found.chosen) continue;
     return {
       ok: true,
       days: found.chosen.map((doctor) => DOCTORS[doctor]),
       key: found.key,
+      weekend: discovered.key,
       nodes,
       ties: found.ties,
       truncated: false,
@@ -997,7 +1164,6 @@ function evaluate(days, rules, letters) {
   }
   return issues;
 }
-
 
 const STORAGE_KEY = "turbo-shift-v1";
 const WEEKDAYS = [[0, "Sun"], [1, "Mon"], [2, "Tue"], [3, "Wed"], [4, "Thu"], [5, "Fri"], [6, "Sat"]];
