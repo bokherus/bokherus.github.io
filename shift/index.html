@@ -108,7 +108,6 @@
     .wd-grid {
       display: grid;
       grid-template-columns: repeat(7, minmax(0, 1fr));
-      gap: 4px;
     }
     .wd, .block, .add-date, .mode-choice {
       background: white;
@@ -117,11 +116,20 @@
       color: var(--ink);
     }
     .wd {
-      height: 28px;
-      padding: 0 1px;
+      width: 100%;
+      aspect-ratio: 1;
+      height: auto;
+      min-width: 0;
+      padding: 0;
+      border-radius: 0;
       font-size: 11px;
       font-weight: 590;
     }
+    .wd-slot:not(:first-child) .wd { border-left-width: 0; }
+    .wd-slot:first-child .wd { border-radius: 6px 0 0 6px; }
+    .wd-slot:last-child .wd { border-radius: 0 6px 6px 0; }
+    .wd.is-exclude { border-color: var(--exclude); }
+    .wd.is-limit { border-color: var(--limit); }
     .wd:hover:not(.is-exclude):not(.is-limit) { background: #e8e8ed; }
     .is-exclude {
       background: var(--exclude);
@@ -135,7 +143,7 @@
     }
     .wd.is-exclude:hover, .block:hover, .mode-choice.is-exclude:hover { filter: brightness(0.92); }
     .wd.is-limit:hover, .mode-choice.is-limit:hover { filter: brightness(0.95); }
-    .wd-slot { position: relative; }
+    .wd-slot { position: relative; min-width: 0; }
     .wd-slot:hover, .wd-slot:focus-within { z-index: 3; }
     .mode-tip {
       display: none;
@@ -147,6 +155,8 @@
     .wd-slot:nth-child(n + 5) .mode-tip { left: auto; right: 0; }
     .wd-slot:hover .mode-tip,
     .wd-slot:focus-within .mode-tip { display: block; }
+    .wd-slot:has(.is-exclude) .mode-tip,
+    .wd-slot:has(.is-limit) .mode-tip { display: none; }
     .mode-tip-card {
       display: grid;
       gap: 4px;
@@ -1082,14 +1092,17 @@ function weekdayRules(id, rule) {
     if (mode === "ban") cls.push("is-exclude");
     else if (mode === "cap") cls.push("is-limit");
     const meaning = mode === "ban" ? ", excluded" : mode === "cap" ? ", limited" : "";
+    const tip = mode === "free"
+      ? `<div class="mode-tip">
+          <div class="mode-tip-card" role="group" aria-label="${WEEKDAY_NAME[wd]} for ${id}">
+            <button type="button" class="mode-choice is-exclude" data-pick-mode="ban" data-doctor="${id}" data-pick-weekday="${wd}">Exclude</button>
+            <button type="button" class="mode-choice is-limit" data-pick-mode="cap" data-doctor="${id}" data-pick-weekday="${wd}">Limit</button>
+          </div>
+        </div>`
+      : "";
     return `<div class="wd-slot">
       <button type="button" class="${cls.join(" ")}" data-weekday="${wd}" data-doctor="${id}" aria-pressed="${mode !== "free"}" aria-label="${WEEKDAY_NAME[wd]} for ${id}${meaning}">${label}</button>
-      <div class="mode-tip">
-        <div class="mode-tip-card" role="group" aria-label="${WEEKDAY_NAME[wd]} for ${id}">
-          <button type="button" class="mode-choice is-exclude" data-pick-mode="ban" data-doctor="${id}" data-pick-weekday="${wd}" aria-pressed="${mode === "ban"}">Exclude</button>
-          <button type="button" class="mode-choice is-limit" data-pick-mode="cap" data-doctor="${id}" data-pick-weekday="${wd}" aria-pressed="${mode === "cap"}">Limit</button>
-        </div>
-      </div>
+      ${tip}
     </div>`;
   }).join("");
   return `<div class="wd-grid">${buttons}</div>`;
