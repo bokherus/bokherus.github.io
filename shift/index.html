@@ -59,14 +59,21 @@
     }
     .doctor { padding: 10px 8px 12px; }
     .doctor + .doctor { border-top: 1px solid var(--line); }
-    .doctor h2 {
+    .doctor h2 { margin: 0 0 8px; font-size: 13px; font-weight: 650; }
+    .doctor-focus {
       display: flex;
       align-items: center;
       gap: 8px;
-      margin: 0 0 8px;
-      font-size: 13px;
+      width: 100%;
+      margin: 0;
+      padding: 2px 4px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      text-align: left;
       font-weight: 650;
     }
+    .doctor-focus[aria-pressed="true"] { background: var(--tint); }
     .dot {
       width: 10px;
       height: 10px;
@@ -234,6 +241,7 @@
     tr td:last-child { border-right: 0; }
     td.weekend { background: var(--weekend); }
     .day, .cell {
+      position: relative;
       width: 100%;
       height: 100%;
       min-height: 76px;
@@ -246,9 +254,31 @@
       text-align: left;
       color: inherit;
     }
-    .day:hover { background: rgba(0, 0, 0, 0.035); }
-    .day[aria-pressed="true"] { background: rgba(0, 122, 255, 0.06); }
+    .day.doctor-A, .day.doctor-B, .day.doctor-C, .day.doctor-D { background: var(--tint); }
+    .day.dim { background: #ececef; }
+    .day:hover { filter: brightness(0.97); }
+    .day[aria-pressed="true"] { outline: 2px solid var(--ink); outline-offset: -2px; }
     .day:focus-visible { outline-offset: -2px; }
+    .day {
+      box-shadow:
+        var(--seam-l, inset 0 0 0 transparent),
+        var(--seam-r, inset 0 0 0 transparent),
+        var(--seam-t, inset 0 0 0 transparent),
+        var(--seam-b, inset 0 0 0 transparent);
+    }
+    .day.seam-left { --seam-l: inset 4px 0 0 var(--bad); }
+    .day.seam-right { --seam-r: inset -4px 0 0 var(--bad); }
+    .day.seam-sun { --seam-t: inset 0 4px 0 var(--bad); }
+    .day.seam-sat { --seam-b: inset 0 -4px 0 var(--bad); }
+    .corner {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      width: 8px;
+      height: 8px;
+      border-radius: 2px;
+      background: var(--bad);
+    }
     .datenum {
       display: flex;
       justify-content: center;
@@ -273,34 +303,14 @@
     .datenum.is-out { color: #c7c7cc; }
     .datenum.is-today .n { background: var(--today); color: white; font-weight: 650; }
     .datenum.is-selected:not(.is-today) .n { background: #d1d1d6; font-weight: 650; }
-    .event {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      margin: 0 6px;
-      height: 16px;
-      padding: 0 3px;
-      border-radius: 4px;
-      color: var(--ink);
+    .holder {
+      align-self: center;
+      margin-top: 1px;
       font-size: 12px;
-      font-weight: 520;
-      line-height: 16px;
-      overflow: hidden;
-      white-space: nowrap;
+      font-weight: 650;
+      color: var(--ink-tone);
     }
-    .event::before {
-      content: "";
-      width: 7px;
-      height: 7px;
-      border-radius: 2px;
-      background: var(--tone);
-      flex: none;
-    }
-    .event.on { background: var(--tone); color: white; font-weight: 650; }
-    .event.on::before { display: none; }
-    .event.broken { color: var(--bad); }
-    .event.broken::before { background: var(--bad); }
-    .event.on.broken { background: var(--today); color: white; }
+    .day.dim .holder { color: #aeaeb2; }
     #chooser {
       position: absolute;
       z-index: 5;
@@ -335,10 +345,10 @@
     .choice .dot { width: 8px; height: 8px; }
     .choice:hover { background: var(--tone); color: white; }
     .choice:hover .dot { background: white; box-shadow: none; }
-    .doctor-A { --tone: #34c759; --tint: #e3f8e8; --ink-tone: #1d7a34; }
-    .doctor-B { --tone: #30b0c7; --tint: #e5f6f9; --ink-tone: #0e7490; }
-    .doctor-C { --tone: #007aff; --tint: #e5f2ff; --ink-tone: #0058c4; }
-    .doctor-D { --tone: #af52de; --tint: #f7e8fc; --ink-tone: #8944ab; }
+    .doctor-A { --tone: #34c759; --tint: #d4f5df; --ink-tone: #1d7a34; }
+    .doctor-B { --tone: #30b0c7; --tint: #c9eef4; --ink-tone: #0e7490; }
+    .doctor-C { --tone: #007aff; --tint: #d6e8ff; --ink-tone: #0058c4; }
+    .doctor-D { --tone: #af52de; --tint: #f0d9fa; --ink-tone: #8944ab; }
     @media (max-width: 820px) {
       body { overflow: auto; }
       .app {
@@ -852,6 +862,7 @@ const issuesEl = document.querySelector("#issues");
 
 let state = loadState();
 let openRules = {};
+let focusDoctor = null;
 
 function currentMonthValue() {
   const now = new Date();
@@ -962,7 +973,7 @@ function renderDoctors() {
       <button type="button" class="block" data-doctor="${id}" data-day="${item.day}" aria-pressed="${blocked.has(item.day)}" aria-label="Block ${formatDay(parsed, item.day)} for ${id}">${item.day}</button>`).join("");
     return `
       <article class="doctor doctor-${id}">
-        <h2><span class="dot" aria-hidden="true"></span>${id}<span class="count" data-count="${id}"></span></h2>
+        <h2><button type="button" class="doctor-focus" data-focus="${id}" aria-pressed="${focusDoctor === id}" aria-label="${focusDoctor === id ? `Showing ${id} on the month` : `Show ${id} on the month`}"><span class="dot" aria-hidden="true"></span>${id}<span class="count" data-count="${id}"></span></button></h2>
         <div class="rules">${ruleRow(id, rule, "ban")}${ruleRow(id, rule, "cap")}</div>
         <div class="blocks"><span class="blocks-label">Blocked</span>${blocks}</div>
       </article>`;
@@ -1008,7 +1019,26 @@ function renderBoard() {
   const parsed = parseMonth(state.month);
   const days = datedDays(parsed);
   const issues = state.grid ? evaluate(days, state.rules, state.grid) : [];
-  const broken = new Set(issues.flatMap((issue) => issue.days || []));
+  const corners = new Set();
+  for (const issue of issues) {
+    if (issue.type === "blocked" || issue.type === "ban" || issue.type === "cap") {
+      for (const day of issue.days) corners.add(day);
+    }
+  }
+  const seams = new Map();
+  const markSeam = (day, edge) => {
+    const entry = seams.get(day) || {};
+    entry[edge] = true;
+    seams.set(day, entry);
+  };
+  if (state.grid) {
+    for (let day = 1; day < state.grid.length; day += 1) {
+      if (state.grid[day - 1] !== state.grid[day]) continue;
+      const weekday = new Date(parsed.year, parsed.monthIndex, day).getDay();
+      if (weekday === 6) markSeam(day, "sat");
+      else markSeam(day, "right");
+    }
+  }
   const now = new Date();
   const title = beTitle(parsed);
 
@@ -1062,13 +1092,27 @@ function renderBoard() {
     }
     const holder = state.grid[day - 1];
     const pressed = selected === day;
-    const isBroken = broken.has(day);
-    const eventClass = `event doctor-${holder}${pressed ? " on" : ""}${isBroken ? " broken" : ""}`;
-    return `<td class="${tdClass}"><button type="button" class="day${isBroken ? " broken" : ""}" data-doctor="${holder}" data-select="${day}" aria-pressed="${pressed}"${isToday ? ` aria-current="date"` : ""} aria-label="${formatDay(parsed, day)}, ${holder}">${num}<span class="${eventClass}">${holder}</span></button></td>`;
+    const seam = seams.get(day) || {};
+    const corner = corners.has(day);
+    const dim = focusDoctor && holder !== focusDoctor;
+    const dayClass = [
+      "day",
+      `doctor-${holder}`,
+      dim ? "dim" : "",
+      seam.left ? "seam-left" : "",
+      seam.right ? "seam-right" : "",
+      seam.sat ? "seam-sat" : "",
+      seam.sun ? "seam-sun" : "",
+    ].filter(Boolean).join(" ");
+    const notes = [];
+    if (seam.left || seam.right || seam.sat || seam.sun) notes.push("consecutive");
+    if (corner) notes.push("broken");
+    return `<td class="${tdClass}"><button type="button" class="${dayClass}" data-doctor="${holder}" data-select="${day}" aria-pressed="${pressed}"${isToday ? ` aria-current="date"` : ""} aria-label="${formatDay(parsed, day)}, ${holder}${notes.length ? `, ${notes.join(", ")}` : ""}">${num}<span class="holder">${holder}</span>${corner ? `<span class="corner" aria-hidden="true"></span>` : ""}</button></td>`;
   });
   const rows = [];
   for (let index = 0; index < cells.length; index += 7) rows.push(`<tr>${cells.slice(index, index + 7).join("")}</tr>`);
-  calendarEl.innerHTML = `<table aria-label="Shift holder for each date"><thead><tr>${WEEKDAYS.map(([, label]) => `<th scope="col">${label}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table>`;
+  const gridLabel = focusDoctor ? `Shift holder for each date, showing ${focusDoctor}` : "Shift holder for each date";
+  calendarEl.innerHTML = `<table aria-label="${gridLabel}"><thead><tr>${WEEKDAYS.map(([, label]) => `<th scope="col">${label}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table>`;
 
   renderCounts();
   issuesEl.innerHTML = issues.length
@@ -1085,6 +1129,7 @@ function setMonth(value) {
   }
   state = { month: next.value, rules: blankRules(), grid: null, selected: null, reason: "" };
   openRules = {};
+  focusDoctor = null;
   saveState();
   monthInput.value = state.month;
   renderDoctors();
@@ -1125,6 +1170,15 @@ generateButton.addEventListener("click", () => {
 });
 
 doctorsEl.addEventListener("click", (event) => {
+  const focus = event.target.closest("[data-focus]");
+  if (focus) {
+    const id = focus.dataset.focus;
+    focusDoctor = focusDoctor === id ? null : id;
+    renderDoctors();
+    renderBoard();
+    doctorsEl.querySelector(`[data-focus="${id}"]`)?.focus();
+    return;
+  }
   const toggle = event.target.closest("[data-rule]");
   if (toggle) {
     const id = toggle.dataset.doctor;
