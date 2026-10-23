@@ -144,7 +144,7 @@
     .wd.is-exclude:hover, .block:hover, .mode-choice.is-exclude:hover { filter: brightness(0.92); }
     .wd.is-limit:hover, .mode-choice.is-limit:hover { filter: brightness(0.95); }
     .wd-slot { position: relative; min-width: 0; }
-    .wd-slot:hover, .wd-slot:focus-within { z-index: 3; }
+    .wd-slot.is-open { z-index: 3; }
     .mode-tip {
       display: none;
       position: absolute;
@@ -153,10 +153,7 @@
       padding-top: 4px;
     }
     .wd-slot:nth-child(n + 5) .mode-tip { left: auto; right: 0; }
-    .wd-slot:hover .mode-tip,
-    .wd-slot:focus-within .mode-tip { display: block; }
-    .wd-slot:has(.wd.is-exclude) .mode-tip,
-    .wd-slot:has(.wd.is-limit) .mode-tip { display: none; }
+    .wd-slot.is-open .mode-tip { display: block; }
     .mode-tip-card {
       display: grid;
       gap: 4px;
@@ -1013,6 +1010,7 @@ const blockPanelEl = document.querySelector("#block-panel");
 let state = loadState();
 let focusDoctor = null;
 let blockDoctor = null;
+let weekdayPick = null;
 
 function currentMonthValue() {
   const now = new Date();
@@ -1097,16 +1095,17 @@ function weekdayRules(id, rule) {
     if (mode === "ban") cls.push("is-exclude");
     else if (mode === "cap") cls.push("is-limit");
     const meaning = mode === "ban" ? ", excluded" : mode === "cap" ? ", limited" : "";
-    const tip = mode === "free"
-      ? `<div class="mode-tip">
+    const open = mode === "free" && weekdayPick && weekdayPick.id === id && weekdayPick.wd === wd;
+    const tip = open
+      ? `<div class="mode-tip" id="mode-pick">
           <div class="mode-tip-card" role="group" aria-label="${WEEKDAY_NAME[wd]} for ${id}">
             <button type="button" class="mode-choice is-exclude" data-pick-mode="ban" data-doctor="${id}" data-pick-weekday="${wd}">Exclude</button>
             <button type="button" class="mode-choice is-limit" data-pick-mode="cap" data-doctor="${id}" data-pick-weekday="${wd}">Limit</button>
           </div>
         </div>`
       : "";
-    return `<div class="wd-slot">
-      <button type="button" class="${cls.join(" ")}" data-weekday="${wd}" data-doctor="${id}" aria-pressed="${mode !== "free"}" aria-label="${WEEKDAY_NAME[wd]} for ${id}${meaning}">${label}</button>
+    return `<div class="wd-slot${open ? " is-open" : ""}">
+      <button type="button" class="${cls.join(" ")}" data-weekday="${wd}" data-doctor="${id}" aria-pressed="${mode !== "free"}"${open ? ` aria-expanded="true" aria-controls="mode-pick"` : ""} aria-label="${WEEKDAY_NAME[wd]} for ${id}${meaning}">${label}</button>
       ${tip}
     </div>`;
   }).join("");
@@ -1362,6 +1361,7 @@ function setMonth(value) {
   state = { month: next.value, rules: blankRules(), grid: null, selected: null, reason: "" };
   focusDoctor = null;
   blockDoctor = null;
+  weekdayPick = null;
   saveState();
   monthInput.value = state.month;
   renderDoctors();
@@ -1453,6 +1453,7 @@ doctorsEl.addEventListener("click", (event) => {
     const id = focus.dataset.focus;
     focusDoctor = focusDoctor === id ? null : id;
     blockDoctor = null;
+    weekdayPick = null;
     renderDoctors();
     renderBoard();
     doctorsEl.querySelector(`[data-focus="${id}"]`)?.focus();
@@ -1464,6 +1465,7 @@ doctorsEl.addEventListener("click", (event) => {
     const wd = Number(choice.dataset.pickWeekday);
     state.rules[id].mode[wd] = choice.dataset.pickMode;
     blockDoctor = null;
+    weekdayPick = null;
     saveState();
     renderDoctors();
     renderBoard();
@@ -1475,9 +1477,16 @@ doctorsEl.addEventListener("click", (event) => {
     const id = weekday.dataset.doctor;
     const wd = Number(weekday.dataset.weekday);
     const rule = state.rules[id];
-    if (rule.mode[wd] === "free") return;
-    rule.mode[wd] = "free";
     blockDoctor = null;
+    if (rule.mode[wd] === "free") {
+      const same = weekdayPick && weekdayPick.id === id && weekdayPick.wd === wd;
+      weekdayPick = same ? null : { id, wd };
+      renderDoctors();
+      doctorsEl.querySelector(`[data-weekday="${wd}"][data-doctor="${id}"]`)?.focus();
+      return;
+    }
+    rule.mode[wd] = "free";
+    weekdayPick = null;
     saveState();
     renderDoctors();
     renderBoard();
@@ -1488,6 +1497,7 @@ doctorsEl.addEventListener("click", (event) => {
   if (add) {
     const id = add.dataset.blockAdd;
     blockDoctor = blockDoctor === id ? null : id;
+    weekdayPick = null;
     state.selected = null;
     renderDoctors();
     renderBoard();
@@ -1525,8 +1535,9 @@ calendarEl.addEventListener("click", (event) => {
   if (!button) return;
   const day = Number(button.dataset.select);
   state.selected = state.selected === day ? null : day;
-  if (blockDoctor) {
+  if (blockDoctor || weekdayPick) {
     blockDoctor = null;
+    weekdayPick = null;
     renderDoctors();
   }
   renderBoard();
@@ -1544,8 +1555,9 @@ chooserEl.addEventListener("click", (event) => {
 });
 
 document.addEventListener("click", (event) => {
-  if (blockDoctor && !event.target.closest("#doctors, #block-panel")) {
+  if ((blockDoctor || weekdayPick) && !event.target.closest("#doctors, #block-panel")) {
     blockDoctor = null;
+    weekdayPick = null;
     renderDoctors();
   }
   if (!state.selected) return;
@@ -1556,6 +1568,13 @@ document.addEventListener("click", (event) => {
 
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
+  if (weekdayPick) {
+    const { id, wd } = weekdayPick;
+    weekdayPick = null;
+    renderDoctors();
+    doctorsEl.querySelector(`[data-weekday="${wd}"][data-doctor="${id}"]`)?.focus();
+    return;
+  }
   if (blockDoctor) {
     const id = blockDoctor;
     blockDoctor = null;
