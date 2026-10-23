@@ -43,7 +43,6 @@
       font-weight: 600;
       letter-spacing: -0.03em;
     }
-    .lede { margin: 4px 0 0; color: var(--muted); max-width: 38rem; }
     .controls { display: flex; gap: 10px; align-items: end; }
     label.field { display: grid; gap: 4px; font-size: 0.85rem; color: var(--muted); }
     input[type="month"], select {
@@ -165,7 +164,6 @@
   <header>
     <div>
       <h1>Monthly shift</h1>
-      <p class="lede">One Shift a day for A, B, C, and D. Generate builds a plan. Click a date to give that Shift to someone else.</p>
     </div>
     <div class="controls">
       <label class="field">Month
@@ -734,7 +732,6 @@ function renderDoctors() {
       <article class="doctor doctor-${id}">
         <h2 class="badge">${id}</h2>
         <div class="rules">${ruleRow(id, rule, "ban")}${ruleRow(id, rule, "cap")}</div>
-        <p class="hint">Ban never. Cap at most once. Blocked dates stay Non-shift.</p>
         <div class="blocks">${blocks}</div>
       </article>`;
   }).join("");
