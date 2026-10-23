@@ -1214,7 +1214,6 @@ let pending = false;
 let generateTicket = 0;
 let veilTimer = 0;
 const BLUR_MS = 520;
-const CTA_FADE_MS = 180;
 const HOLD_MS = 280;
 const appEl = document.querySelector(".app");
 
@@ -1336,7 +1335,7 @@ function syncChrome() {
   const veiled = veil === "veiled" || veil === "holding";
   const inFlight = veil === "blurring" || veil === "holding" || veil === "clearing";
   const showActions = Boolean(state.grid) && (veil === "sharp" || (fromPlan && inFlight));
-  const showCta = !fromPlan && (veil === "veiled" || veil === "holding" || veil === "clearing");
+  const showCta = !fromPlan && (veil === "veiled" || veil === "holding");
   appEl.classList.toggle("is-veiled", veiled);
   calendarEl.toggleAttribute("inert", veil !== "sharp");
   chooserEl.toggleAttribute("inert", veil !== "sharp");
@@ -1600,21 +1599,6 @@ function playBlur(to) {
   });
 }
 
-function fadeOutCta() {
-  if (fromPlan || veilButton.hidden || prefersReducedMotion()) {
-    veilButton.hidden = true;
-    return Promise.resolve();
-  }
-  const anim = veilButton.animate(
-    [{ opacity: 1 }, { opacity: 0 }],
-    { duration: CTA_FADE_MS, easing: "ease-out", fill: "forwards" }
-  );
-  return anim.finished.then(() => {
-    veilButton.hidden = true;
-    anim.cancel();
-  });
-}
-
 function cancelVeil() {
   window.clearTimeout(veilTimer);
   veilTimer = 0;
@@ -1636,10 +1620,11 @@ function finishVeil(ticket) {
 function beginClear(ticket) {
   if (ticket !== generateTicket || veil !== "holding") return;
   veil = "clearing";
+  veilButton.hidden = true;
+  veilButton.getAnimations().forEach((anim) => anim.cancel());
   calendarEl.style.filter = "blur(8px)";
-  const fade = fadeOutCta();
   syncChrome();
-  playBlur("none").then(() => fade).then(() => finishVeil(ticket)).catch(() => {});
+  playBlur("none").then(() => finishVeil(ticket)).catch(() => {});
 }
 
 function revealSolved(ticket, days) {
