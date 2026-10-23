@@ -86,9 +86,11 @@
     }
     .count {
       margin-left: auto;
+      min-width: 1ch;
       color: var(--muted);
       font-weight: 500;
       font-variant-numeric: tabular-nums;
+      text-align: right;
     }
     .meaning {
       display: flex;
@@ -342,6 +344,7 @@
     .nav button:active { background: #dedee3; }
     #generate {
       height: 28px;
+      min-width: 92px;
       border: 0;
       border-radius: 8px;
       background: var(--accent);
@@ -464,11 +467,11 @@
     .day.dim .holder { color: #aeaeb2; }
     .day.arriving {
       --arrive: var(--tint);
-      animation: day-arrive 220ms ease both;
+      animation: day-arrive 720ms cubic-bezier(0.22, 1, 0.36, 1) both;
     }
     .day.arriving.dim { --arrive: #ececef; }
     .day.arriving .holder,
-    .day.arriving .corner { animation: holder-arrive 220ms ease both; }
+    .day.arriving .corner { animation: holder-arrive 720ms cubic-bezier(0.22, 1, 0.36, 1) both; }
     @keyframes day-arrive {
       from {
         background: transparent;
@@ -1224,9 +1227,9 @@ let weekdayPick = null;
 let revealing = false;
 let generateTicket = 0;
 let revealTimer = 0;
-const REVEAL_HOLD = 300;
-const REVEAL_GAP = 250;
-const REVEAL_FADE = 220;
+const REVEAL_HOLD = 420;
+const REVEAL_GAP = 480;
+const REVEAL_FADE = 720;
 const appEl = document.querySelector(".app");
 
 function currentMonthValue() {
@@ -1501,7 +1504,8 @@ function renderBoard() {
 
   if (revealing) {
     statusEl.textContent = "No plan yet.";
-    statusEl.classList.remove("bad", "quiet");
+    statusEl.classList.remove("bad");
+    statusEl.classList.add("quiet");
   } else if (state.reason) {
     statusEl.textContent = state.reason;
     statusEl.classList.add("bad");
