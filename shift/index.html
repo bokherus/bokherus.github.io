@@ -17,6 +17,8 @@
       --bad: #d70015;
       --bad-bg: #ffebe9;
       --field: #f2f2f7;
+      --exclude: #d70015;
+      --limit: #ffff66;
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; }
@@ -88,27 +90,108 @@
       font-weight: 500;
       font-variant-numeric: tabular-nums;
     }
-    .rules { display: grid; gap: 6px; }
-    .rule { display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 6px; align-items: start; }
-    .rule-toggle, .wd, .block {
+    .meaning {
+      display: flex;
+      gap: 6px;
+      margin: 0 8px 8px;
+    }
+    .meaning span {
+      display: inline-flex;
+      align-items: center;
+      height: 18px;
+      padding: 0 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 650;
+    }
+    .prefs { display: grid; gap: 8px; }
+    .wd-grid {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 4px;
+    }
+    .wd, .block, .add-date, .mode-choice {
       background: white;
       border: 1px solid #d2d2d7;
       border-radius: 6px;
       color: var(--ink);
     }
-    .rule-toggle { width: 100%; height: 22px; padding: 0; font-size: 12px; font-weight: 590; }
-    .rule-days { display: flex; flex-wrap: wrap; gap: 4px; }
-    .wd, .block {
-      min-width: 28px;
-      height: 22px;
-      padding: 0 4px;
+    .wd {
+      height: 28px;
+      padding: 0 1px;
       font-size: 11px;
-      font-variant-numeric: tabular-nums;
+      font-weight: 590;
     }
-    .rule-toggle[aria-expanded="true"], .wd[aria-pressed="true"], .block[aria-pressed="true"] {
-      background: var(--tone);
+    .wd.is-picking, .wd:hover:not(.is-exclude):not(.is-limit) { background: #e8e8ed; }
+    .is-exclude {
+      background: var(--exclude);
       border-color: transparent;
       color: white;
+    }
+    .is-limit {
+      background: var(--limit);
+      border-color: transparent;
+      color: var(--ink);
+    }
+    .wd.is-exclude:hover, .block:hover, .mode-choice.is-exclude:hover { filter: brightness(0.92); }
+    .wd.is-limit:hover, .mode-choice.is-limit:hover { filter: brightness(0.95); }
+    .mode-pick { display: grid; gap: 4px; }
+    .mode-pick p {
+      margin: 0;
+      font-size: 11px;
+      font-weight: 650;
+      color: var(--muted);
+    }
+    .mode-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+    }
+    .mode-choice {
+      height: 26px;
+      padding: 0 8px;
+      font-size: 12px;
+      font-weight: 650;
+    }
+    .date-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .date-head h3 {
+      margin: 0;
+      font-size: 11px;
+      font-weight: 650;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .add-date {
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      font-size: 16px;
+      line-height: 1;
+      font-weight: 500;
+    }
+    .add-date:hover { background: #e8e8ed; }
+    .add-date[aria-expanded="true"],
+    .add-date[aria-expanded="true"]:hover {
+      background: var(--ink);
+      border-color: transparent;
+      color: white;
+    }
+    .rule-days { display: flex; flex-wrap: wrap; gap: 4px; }
+    .block {
+      min-width: 28px;
+      height: 22px;
+      padding: 0 6px;
+      font-size: 11px;
+      font-weight: 590;
+      font-variant-numeric: tabular-nums;
     }
     .block-month {
       margin-top: 6px;
@@ -136,9 +219,10 @@
     }
     .block-month .datenum { height: 30px; }
     .block-month .datenum.is-blocked .n {
-      background: var(--tone);
+      background: var(--exclude);
       color: white;
       font-weight: 650;
+      border-radius: 6px;
     }
     .block-month .pick:hover .datenum:not(.is-today):not(.is-blocked) .n { background: #d1d1d6; }
     .issues { margin: 8px 4px 0; }
@@ -405,6 +489,7 @@
   <div class="app">
     <aside class="sidebar">
       <p class="side-label">Doctors</p>
+      <p class="meaning"><span class="is-exclude">Exclude</span><span class="is-limit">Limit</span></p>
       <section id="doctors" aria-label="Personal rules"></section>
       <div id="issues"></div>
     </aside>
@@ -494,7 +579,7 @@ function explain(ctx, rules) {
     }
     if (!holder) {
       const when = formatDay(ctx, day);
-      return `${when} has no legal holder. Every doctor is blocked or banned that day.`;
+      return `${when} has no legal holder. Every doctor excludes that day.`;
     }
   }
 
@@ -513,7 +598,7 @@ function explain(ctx, rules) {
     }
     if (cover < dates.length) {
       const name = weekdayName[weekdayIndex];
-      return `${name} cannot be covered. Bans and caps allow ${cover} Shift${cover === 1 ? "" : "s"} for ${dates.length} ${name}s.`;
+      return `${name} cannot be covered. Excludes and limits allow ${cover} Shift${cover === 1 ? "" : "s"} for ${dates.length} ${name}s.`;
     }
   }
 
@@ -901,9 +986,9 @@ const calendarEl = document.querySelector("#calendar");
 const issuesEl = document.querySelector("#issues");
 
 let state = loadState();
-let openRules = {};
 let focusDoctor = null;
 let blockDoctor = null;
+let weekdayPick = null;
 
 function currentMonthValue() {
   const now = new Date();
@@ -981,18 +1066,27 @@ function formatDay(parsed, day) {
   });
 }
 
-const RULE_LABEL = { ban: "Ban", cap: "Cap" };
-
-function ruleRow(id, rule, mode) {
-  const open = Boolean(openRules[id]?.[mode]);
-  const days = WEEKDAYS.filter(([wd]) => rule.mode[wd] === mode || (open && rule.mode[wd] === "free"));
-  const chips = days.map(([wd, label]) => `
-    <button type="button" class="wd" data-doctor="${id}" data-mode="${mode}" data-weekday="${wd}" aria-pressed="${rule.mode[wd] === mode}" aria-label="${RULE_LABEL[mode]} ${WEEKDAY_NAME[wd]} for ${id}">${label}</button>`).join("");
-  return `
-    <div class="rule">
-      <button type="button" class="rule-toggle" data-doctor="${id}" data-rule="${mode}" aria-expanded="${open}" aria-label="${RULE_LABEL[mode]} weekdays for ${id}">${RULE_LABEL[mode]}</button>
-      <div class="rule-days">${chips}</div>
-    </div>`;
+function weekdayRules(id, rule) {
+  const buttons = WEEKDAYS.map(([wd, label]) => {
+    const mode = rule.mode[wd];
+    const picking = weekdayPick && weekdayPick.id === id && weekdayPick.wd === wd;
+    const cls = ["wd"];
+    if (mode === "ban") cls.push("is-exclude");
+    else if (mode === "cap") cls.push("is-limit");
+    else if (picking) cls.push("is-picking");
+    const meaning = mode === "ban" ? ", excluded" : mode === "cap" ? ", limited" : "";
+    return `<button type="button" class="${cls.join(" ")}" data-weekday="${wd}" data-doctor="${id}" aria-pressed="${mode !== "free"}"${picking ? ` aria-expanded="true" aria-controls="mode-pick"` : ""} aria-label="${WEEKDAY_NAME[wd]} for ${id}${meaning}">${label}</button>`;
+  }).join("");
+  const pick = weekdayPick && weekdayPick.id === id
+    ? `<div class="mode-pick" id="mode-pick">
+        <p>${WEEKDAY_NAME[weekdayPick.wd]}</p>
+        <div class="mode-actions" role="group" aria-label="${WEEKDAY_NAME[weekdayPick.wd]} for ${id}">
+          <button type="button" class="mode-choice is-exclude" data-pick-mode="ban" data-doctor="${id}" data-pick-weekday="${weekdayPick.wd}">Exclude</button>
+          <button type="button" class="mode-choice is-limit" data-pick-mode="cap" data-doctor="${id}" data-pick-weekday="${weekdayPick.wd}">Limit</button>
+        </div>
+      </div>`
+    : "";
+  return `<div class="wd-grid">${buttons}</div>${pick}`;
 }
 
 function renderCounts() {
@@ -1020,7 +1114,7 @@ function blockPanel(id, parsed) {
     const numClass = ["datenum"];
     if (pressed) numClass.push("is-blocked");
     else if (isToday) numClass.push("is-today");
-    const verb = pressed ? "Unblock" : "Block";
+    const verb = pressed ? "Clear excluded" : "Exclude";
     return `<td class="${tdClass}"><button type="button" class="pick" data-block-day="${day}" data-doctor="${id}" aria-pressed="${pressed}"${isToday ? ` aria-current="date"` : ""} aria-label="${verb} ${formatDay(parsed, day)} for ${id}"><span class="${numClass.join(" ")}"><span class="n">${day}</span></span></button></td>`;
   });
   const rows = [];
@@ -1028,8 +1122,8 @@ function blockPanel(id, parsed) {
   const head = WEEKDAYS.map(([, label]) => `<th scope="col">${label}</th>`).join("");
   return `
     <div class="block-month" id="block-panel" data-block-panel="${id}">
-      <p>Blocked</p>
-      <table aria-label="Blocked dates for ${id}"><thead><tr>${head}</tr></thead><tbody>${rows.join("")}</tbody></table>
+      <p>Choose dates</p>
+      <table aria-label="Excluded dates for ${id}"><thead><tr>${head}</tr></thead><tbody>${rows.join("")}</tbody></table>
     </div>`;
 }
 
@@ -1038,15 +1132,19 @@ function renderDoctors() {
   doctorsEl.innerHTML = DOCTORS.map((id) => {
     const rule = state.rules[id];
     const chips = rule.blocked.map((day) => `
-      <button type="button" class="block" data-doctor="${id}" data-day="${day}" aria-pressed="true" aria-label="Unblock ${formatDay(parsed, day)} for ${id}">${day}</button>`).join("");
+      <button type="button" class="block is-exclude" data-doctor="${id}" data-day="${day}" aria-label="Clear excluded ${formatDay(parsed, day)} for ${id}">${day}</button>`).join("");
     const open = blockDoctor === id;
     return `
       <article class="doctor doctor-${id}">
         <h2><button type="button" class="doctor-focus" data-focus="${id}" aria-pressed="${focusDoctor === id}" aria-label="${focusDoctor === id ? `Showing ${id} on the month` : `Show ${id} on the month`}"><span class="dot" aria-hidden="true"></span>${id}<span class="count" data-count="${id}"></span></button></h2>
-        <div class="rules">${ruleRow(id, rule, "ban")}${ruleRow(id, rule, "cap")}
-          <div class="rule">
-            <button type="button" class="rule-toggle" data-block-add="${id}" aria-expanded="${open}"${open ? ` aria-controls="block-panel"` : ""} aria-label="Add a blocked date for ${id}">Add</button>
-            <div class="rule-days">${chips}</div>
+        <div class="prefs">
+          ${weekdayRules(id, rule)}
+          <div class="dates">
+            <div class="date-head">
+              <h3>Excluded dates</h3>
+              <button type="button" class="add-date" data-block-add="${id}" aria-expanded="${open}"${open ? ` aria-controls="block-panel"` : ""} aria-label="Add an excluded date for ${id}">+</button>
+            </div>
+            ${chips ? `<div class="rule-days">${chips}</div>` : ""}
           </div>
         </div>
         ${open ? blockPanel(id, parsed) : ""}
@@ -1058,11 +1156,11 @@ function renderDoctors() {
 function issueText(parsed, issue) {
   const when = (day) => formatDay(parsed, day);
   if (issue.type === "consecutive") return `${issue.doctor} holds ${when(issue.days[0])} and ${when(issue.days[1])}.`;
-  if (issue.type === "blocked") return `${issue.doctor} holds ${when(issue.days[0])}, which is blocked.`;
-  if (issue.type === "ban") return `${issue.doctor} holds ${when(issue.days[0])}, which is banned.`;
+  if (issue.type === "blocked") return `${issue.doctor} holds ${when(issue.days[0])}, which is an excluded date.`;
+  if (issue.type === "ban") return `${issue.doctor} holds ${when(issue.days[0])}, which is an excluded weekday.`;
   if (issue.type === "cap") {
     const name = WEEKDAY_NAME[issue.weekday];
-    return `${issue.doctor} holds more than one ${name}: ${issue.days.map(when).join(" and ")}.`;
+    return `${issue.doctor} is over the ${name} limit: ${issue.days.map(when).join(" and ")}.`;
   }
   const counts = issue.counts.map(([id, value]) => `${id} ${value}`).join(", ");
   return `Balance is missed. Shifts are ${counts}.`;
@@ -1207,9 +1305,9 @@ function setMonth(value) {
     return;
   }
   state = { month: next.value, rules: blankRules(), grid: null, selected: null, reason: "" };
-  openRules = {};
   focusDoctor = null;
   blockDoctor = null;
+  weekdayPick = null;
   saveState();
   monthInput.value = state.month;
   renderDoctors();
@@ -1301,41 +1399,54 @@ doctorsEl.addEventListener("click", (event) => {
     const id = focus.dataset.focus;
     focusDoctor = focusDoctor === id ? null : id;
     blockDoctor = null;
+    weekdayPick = null;
     renderDoctors();
     renderBoard();
     doctorsEl.querySelector(`[data-focus="${id}"]`)?.focus();
     return;
   }
-  const toggle = event.target.closest("[data-rule]");
-  if (toggle) {
-    const id = toggle.dataset.doctor;
-    const mode = toggle.dataset.rule;
-    const open = openRules[id] || (openRules[id] = {});
-    open[mode] = !open[mode];
+  const choice = event.target.closest("[data-pick-mode]");
+  if (choice) {
+    const id = choice.dataset.doctor;
+    const wd = Number(choice.dataset.pickWeekday);
+    state.rules[id].mode[wd] = choice.dataset.pickMode;
+    weekdayPick = null;
     blockDoctor = null;
+    saveState();
     renderDoctors();
-    doctorsEl.querySelector(`[data-doctor="${id}"][data-rule="${mode}"]`)?.focus();
+    renderBoard();
+    doctorsEl.querySelector(`[data-weekday="${wd}"][data-doctor="${id}"]`)?.focus();
     return;
   }
   const weekday = event.target.closest("[data-weekday]");
   if (weekday) {
     const id = weekday.dataset.doctor;
-    const mode = weekday.dataset.mode;
     const wd = Number(weekday.dataset.weekday);
     const rule = state.rules[id];
-    rule.mode[wd] = rule.mode[wd] === mode ? "free" : mode;
-    if (openRules[id]) openRules[id][mode] = false;
     blockDoctor = null;
-    saveState();
+    if (rule.mode[wd] !== "free") {
+      rule.mode[wd] = "free";
+      weekdayPick = null;
+      saveState();
+      renderDoctors();
+      renderBoard();
+      doctorsEl.querySelector(`[data-weekday="${wd}"][data-doctor="${id}"]`)?.focus();
+      return;
+    }
+    const same = weekdayPick && weekdayPick.id === id && weekdayPick.wd === wd;
+    weekdayPick = same ? null : { id, wd };
     renderDoctors();
-    renderBoard();
-    doctorsEl.querySelector(`[data-doctor="${id}"][data-rule="${mode}"]`)?.focus();
+    const next = weekdayPick
+      ? doctorsEl.querySelector(`[data-pick-mode="ban"][data-doctor="${id}"]`)
+      : doctorsEl.querySelector(`[data-weekday="${wd}"][data-doctor="${id}"]`);
+    next?.focus();
     return;
   }
   const add = event.target.closest("[data-block-add]");
   if (add) {
     const id = add.dataset.blockAdd;
     blockDoctor = blockDoctor === id ? null : id;
+    weekdayPick = null;
     state.selected = null;
     renderDoctors();
     renderBoard();
@@ -1372,8 +1483,9 @@ calendarEl.addEventListener("click", (event) => {
   if (!button) return;
   const day = Number(button.dataset.select);
   state.selected = state.selected === day ? null : day;
-  if (blockDoctor) {
+  if (blockDoctor || weekdayPick) {
     blockDoctor = null;
+    weekdayPick = null;
     renderDoctors();
   }
   renderBoard();
@@ -1391,8 +1503,9 @@ chooserEl.addEventListener("click", (event) => {
 });
 
 document.addEventListener("click", (event) => {
-  if (blockDoctor && !event.target.closest("#doctors")) {
+  if ((blockDoctor || weekdayPick) && !event.target.closest("#doctors")) {
     blockDoctor = null;
+    weekdayPick = null;
     renderDoctors();
   }
   if (!state.selected) return;
@@ -1403,6 +1516,13 @@ document.addEventListener("click", (event) => {
 
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
+  if (weekdayPick) {
+    const { id, wd } = weekdayPick;
+    weekdayPick = null;
+    renderDoctors();
+    doctorsEl.querySelector(`[data-weekday="${wd}"][data-doctor="${id}"]`)?.focus();
+    return;
+  }
   if (blockDoctor) {
     const id = blockDoctor;
     blockDoctor = null;
