@@ -97,7 +97,7 @@
       color: var(--ink);
     }
     .rule-toggle { width: 100%; height: 22px; padding: 0; font-size: 12px; font-weight: 590; }
-    .rule-days, .blocks { display: flex; flex-wrap: wrap; gap: 4px; }
+    .rule-days { display: flex; flex-wrap: wrap; gap: 4px; }
     .wd, .block {
       min-width: 28px;
       height: 22px;
@@ -110,13 +110,37 @@
       border-color: transparent;
       color: white;
     }
-    .blocks-label {
-      width: 100%;
-      margin-top: 4px;
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--muted);
+    .block-month {
+      margin-top: 6px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+      background: white;
     }
+    .block-month p {
+      margin: 0;
+      padding: 8px 8px 0;
+      font-size: 12px;
+      font-weight: 650;
+      letter-spacing: -0.01em;
+    }
+    .block-month table { height: auto; }
+    .block-month th { height: 22px; padding: 6px 0 4px; font-size: 11px; }
+    .block-month td { height: 30px; text-align: center; vertical-align: middle; }
+    .block-month .pick {
+      width: 100%;
+      height: 30px;
+      border: 0;
+      background: transparent;
+      padding: 0;
+    }
+    .block-month .datenum { height: 30px; }
+    .block-month .datenum.is-blocked .n {
+      background: var(--tone);
+      color: white;
+      font-weight: 650;
+    }
+    .block-month .pick:hover .datenum:not(.is-today):not(.is-blocked) .n { background: #d1d1d6; }
     .issues { margin: 8px 4px 0; }
     .issues p {
       margin: 0 0 6px;
@@ -863,6 +887,7 @@ const issuesEl = document.querySelector("#issues");
 let state = loadState();
 let openRules = {};
 let focusDoctor = null;
+let blockDoctor = null;
 
 function currentMonthValue() {
   const now = new Date();
@@ -963,19 +988,52 @@ function renderCounts() {
   }
 }
 
+function blockPanel(id, parsed) {
+  const blocked = new Set(state.rules[id].blocked);
+  const now = new Date();
+  const cells = monthGrid(parsed).map((date) => {
+    const inMonth = date.getFullYear() === parsed.year && date.getMonth() === parsed.monthIndex;
+    const weekend = date.getDay() === 0 || date.getDay() === 6;
+    const day = date.getDate();
+    const isToday = date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
+    const tdClass = weekend ? "weekend" : "";
+    if (!inMonth) {
+      return `<td class="${tdClass}"><span class="datenum is-out"><span class="n">${day}</span></span></td>`;
+    }
+    const pressed = blocked.has(day);
+    const numClass = ["datenum"];
+    if (pressed) numClass.push("is-blocked");
+    else if (isToday) numClass.push("is-today");
+    const verb = pressed ? "Unblock" : "Block";
+    return `<td class="${tdClass}"><button type="button" class="pick" data-block-day="${day}" data-doctor="${id}" aria-pressed="${pressed}"${isToday ? ` aria-current="date"` : ""} aria-label="${verb} ${formatDay(parsed, day)} for ${id}"><span class="${numClass.join(" ")}"><span class="n">${day}</span></span></button></td>`;
+  });
+  const rows = [];
+  for (let index = 0; index < cells.length; index += 7) rows.push(`<tr>${cells.slice(index, index + 7).join("")}</tr>`);
+  const head = WEEKDAYS.map(([, label]) => `<th scope="col">${label}</th>`).join("");
+  return `
+    <div class="block-month" id="block-panel" data-block-panel="${id}">
+      <p>Blocked</p>
+      <table aria-label="Blocked dates for ${id}"><thead><tr>${head}</tr></thead><tbody>${rows.join("")}</tbody></table>
+    </div>`;
+}
+
 function renderDoctors() {
   const parsed = parseMonth(state.month);
-  const days = datedDays(parsed);
   doctorsEl.innerHTML = DOCTORS.map((id) => {
     const rule = state.rules[id];
-    const blocked = new Set(rule.blocked);
-    const blocks = days.map((item) => `
-      <button type="button" class="block" data-doctor="${id}" data-day="${item.day}" aria-pressed="${blocked.has(item.day)}" aria-label="Block ${formatDay(parsed, item.day)} for ${id}">${item.day}</button>`).join("");
+    const chips = rule.blocked.map((day) => `
+      <button type="button" class="block" data-doctor="${id}" data-day="${day}" aria-pressed="true" aria-label="Unblock ${formatDay(parsed, day)} for ${id}">${day}</button>`).join("");
+    const open = blockDoctor === id;
     return `
       <article class="doctor doctor-${id}">
         <h2><button type="button" class="doctor-focus" data-focus="${id}" aria-pressed="${focusDoctor === id}" aria-label="${focusDoctor === id ? `Showing ${id} on the month` : `Show ${id} on the month`}"><span class="dot" aria-hidden="true"></span>${id}<span class="count" data-count="${id}"></span></button></h2>
-        <div class="rules">${ruleRow(id, rule, "ban")}${ruleRow(id, rule, "cap")}</div>
-        <div class="blocks"><span class="blocks-label">Blocked</span>${blocks}</div>
+        <div class="rules">${ruleRow(id, rule, "ban")}${ruleRow(id, rule, "cap")}
+          <div class="rule">
+            <button type="button" class="rule-toggle" data-block-add="${id}" aria-expanded="${open}"${open ? ` aria-controls="block-panel"` : ""} aria-label="Add a blocked date for ${id}">Add</button>
+            <div class="rule-days">${chips}</div>
+          </div>
+        </div>
+        ${open ? blockPanel(id, parsed) : ""}
       </article>`;
   }).join("");
   renderCounts();
@@ -1130,6 +1188,7 @@ function setMonth(value) {
   state = { month: next.value, rules: blankRules(), grid: null, selected: null, reason: "" };
   openRules = {};
   focusDoctor = null;
+  blockDoctor = null;
   saveState();
   monthInput.value = state.month;
   renderDoctors();
@@ -1169,11 +1228,21 @@ generateButton.addEventListener("click", () => {
   }, 20);
 });
 
+function setBlocked(id, day, on) {
+  const blocked = new Set(state.rules[id].blocked);
+  if (on) blocked.add(day);
+  else blocked.delete(day);
+  state.rules[id].blocked = [...blocked].sort((a, b) => a - b);
+  saveState();
+}
+
 doctorsEl.addEventListener("click", (event) => {
+  event.stopPropagation();
   const focus = event.target.closest("[data-focus]");
   if (focus) {
     const id = focus.dataset.focus;
     focusDoctor = focusDoctor === id ? null : id;
+    blockDoctor = null;
     renderDoctors();
     renderBoard();
     doctorsEl.querySelector(`[data-focus="${id}"]`)?.focus();
@@ -1185,6 +1254,7 @@ doctorsEl.addEventListener("click", (event) => {
     const mode = toggle.dataset.rule;
     const open = openRules[id] || (openRules[id] = {});
     open[mode] = !open[mode];
+    blockDoctor = null;
     renderDoctors();
     doctorsEl.querySelector(`[data-doctor="${id}"][data-rule="${mode}"]`)?.focus();
     return;
@@ -1197,23 +1267,46 @@ doctorsEl.addEventListener("click", (event) => {
     const rule = state.rules[id];
     rule.mode[wd] = rule.mode[wd] === mode ? "free" : mode;
     if (openRules[id]) openRules[id][mode] = false;
+    blockDoctor = null;
     saveState();
     renderDoctors();
     renderBoard();
     doctorsEl.querySelector(`[data-doctor="${id}"][data-rule="${mode}"]`)?.focus();
     return;
   }
+  const add = event.target.closest("[data-block-add]");
+  if (add) {
+    const id = add.dataset.blockAdd;
+    blockDoctor = blockDoctor === id ? null : id;
+    state.selected = null;
+    renderDoctors();
+    renderBoard();
+    doctorsEl.querySelector(`[data-block-add="${id}"]`)?.focus();
+    if (blockDoctor) doctorsEl.querySelector("[data-block-panel]")?.scrollIntoView({ block: "nearest" });
+    return;
+  }
+  const pick = event.target.closest("[data-block-day]");
+  if (pick) {
+    const id = pick.dataset.doctor;
+    const day = Number(pick.dataset.blockDay);
+    const blocked = new Set(state.rules[id].blocked);
+    setBlocked(id, day, !blocked.has(day));
+    renderDoctors();
+    renderBoard();
+    doctorsEl.querySelector(`[data-block-day="${day}"]`)?.focus();
+    return;
+  }
   const button = event.target.closest(".block");
   if (!button) return;
   const id = button.dataset.doctor;
   const day = Number(button.dataset.day);
-  const blocked = new Set(state.rules[id].blocked);
-  if (blocked.has(day)) blocked.delete(day);
-  else blocked.add(day);
-  state.rules[id].blocked = [...blocked].sort((a, b) => a - b);
-  button.setAttribute("aria-pressed", String(blocked.has(day)));
-  saveState();
+  setBlocked(id, day, false);
+  renderDoctors();
   renderBoard();
+  const next = blockDoctor === id
+    ? doctorsEl.querySelector(`[data-block-day="${day}"]`)
+    : doctorsEl.querySelector(`.block[data-doctor="${id}"]`) || doctorsEl.querySelector(`[data-block-add="${id}"]`);
+  next?.focus();
 });
 
 calendarEl.addEventListener("click", (event) => {
@@ -1221,6 +1314,10 @@ calendarEl.addEventListener("click", (event) => {
   if (!button) return;
   const day = Number(button.dataset.select);
   state.selected = state.selected === day ? null : day;
+  if (blockDoctor) {
+    blockDoctor = null;
+    renderDoctors();
+  }
   renderBoard();
   event.stopPropagation();
 });
@@ -1236,6 +1333,10 @@ chooserEl.addEventListener("click", (event) => {
 });
 
 document.addEventListener("click", (event) => {
+  if (blockDoctor && !event.target.closest("#doctors")) {
+    blockDoctor = null;
+    renderDoctors();
+  }
   if (!state.selected) return;
   if (event.target.closest("[data-select], #chooser")) return;
   state.selected = null;
@@ -1243,7 +1344,15 @@ document.addEventListener("click", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
-  if (event.key !== "Escape" || !state.selected) return;
+  if (event.key !== "Escape") return;
+  if (blockDoctor) {
+    const id = blockDoctor;
+    blockDoctor = null;
+    renderDoctors();
+    doctorsEl.querySelector(`[data-block-add="${id}"]`)?.focus();
+    return;
+  }
+  if (!state.selected) return;
   state.selected = null;
   renderBoard();
 });
