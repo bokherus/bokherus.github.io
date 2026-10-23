@@ -322,7 +322,14 @@
       white-space: nowrap;
       border: 0;
     }
-    .toolbar-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+    .toolbar-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex: none;
+      min-height: 28px;
+    }
     .nav { display: inline-flex; align-items: center; gap: 4px; }
     .nav button {
       height: 28px;
@@ -344,7 +351,6 @@
     .nav button:active { background: #dedee3; }
     #generate {
       height: 28px;
-      min-width: 92px;
       border: 0;
       border-radius: 8px;
       background: var(--accent);
@@ -357,6 +363,7 @@
     #generate:disabled { opacity: 0.55; cursor: progress; }
     #copy {
       height: 28px;
+      min-width: 72px;
       border: 0;
       border-radius: 8px;
       background: var(--field);
@@ -376,6 +383,7 @@
       overflow: auto;
     }
     #calendar { height: 100%; user-select: none; }
+    .app.is-veiled #calendar { filter: blur(8px); }
     table { width: 100%; height: 100%; border-collapse: collapse; table-layout: fixed; }
     th {
       height: 28px;
@@ -465,40 +473,30 @@
       color: var(--ink-tone);
     }
     .day.dim .holder { color: #aeaeb2; }
-    .day.arriving {
-      --arrive: var(--tint);
-      animation: day-arrive 720ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    .veil-cta {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      z-index: 4;
+      height: 44px;
+      padding: 0 22px;
+      border: 0;
+      border-radius: 12px;
+      background: var(--accent);
+      color: white;
+      font-size: 17px;
+      font-weight: 650;
+      letter-spacing: -0.01em;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.16);
+      transform: translate(-50%, -50%);
+      opacity: 0;
+      pointer-events: none;
     }
-    .day.arriving.dim { --arrive: #ececef; }
-    .day.arriving .holder,
-    .day.arriving .corner { animation: holder-arrive 720ms cubic-bezier(0.22, 1, 0.36, 1) both; }
-    @keyframes day-arrive {
-      from {
-        background: transparent;
-        box-shadow: none;
-      }
-      to {
-        background: var(--arrive);
-        box-shadow:
-          var(--seam-l, inset 0 0 0 transparent),
-          var(--seam-r, inset 0 0 0 transparent),
-          var(--seam-t, inset 0 0 0 transparent),
-          var(--seam-b, inset 0 0 0 transparent);
-      }
+    .app.is-veiled .veil-cta:not([hidden]) {
+      opacity: 1;
+      pointer-events: auto;
     }
-    @keyframes holder-arrive {
-      from { opacity: 0; }
-      to { opacity: 1; }
-    }
-    @media (prefers-reduced-motion: reduce) {
-      .day.arriving,
-      .day.arriving .holder,
-      .day.arriving .corner { animation: none; }
-    }
-    .app.is-revealing .sidebar,
-    .app.is-revealing #calendar,
-    .app.is-revealing #chooser,
-    .app.is-revealing #block-panel { pointer-events: none; }
+    .veil-cta:hover { background: #0071eb; }
     #chooser {
       position: absolute;
       z-index: 5;
@@ -569,6 +567,8 @@
         <p id="status" class="status" tabindex="-1" aria-live="polite">No plan yet.</p>
       </div>
       <div class="toolbar-actions">
+        <button id="generate" type="button" hidden>Regenerate</button>
+        <button id="copy" type="button" hidden>Copy</button>
         <div class="nav">
           <button id="prev" class="icon" type="button" aria-label="Previous month">
             <svg width="7" height="12" viewBox="0 0 7 12" aria-hidden="true"><path d="M6 1 1 6l5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -578,12 +578,11 @@
             <svg width="7" height="12" viewBox="0 0 7 12" aria-hidden="true"><path d="M1 1l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
         </div>
-        <button id="generate" type="button">Generate</button>
-        <button id="copy" type="button" disabled>Copy</button>
       </div>
     </header>
     <main class="stage" aria-label="Plan">
       <div id="calendar"></div>
+      <button id="veil-generate" type="button" class="veil-cta" hidden>Generate</button>
       <div id="chooser" hidden></div>
       <div id="block-panel" class="block-month" hidden></div>
     </main>
@@ -1211,6 +1210,7 @@ const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "S
 const monthInput = document.querySelector("#month");
 const monthTitleEl = document.querySelector("#month-title");
 const generateButton = document.querySelector("#generate");
+const veilButton = document.querySelector("#veil-generate");
 const copyButton = document.querySelector("#copy");
 let copyTimer = 0;
 const doctorsEl = document.querySelector("#doctors");
@@ -1224,13 +1224,18 @@ let state = loadState();
 let focusDoctor = null;
 let blockDoctor = null;
 let weekdayPick = null;
-let revealing = false;
+let veil = "sharp";
+let fromPlan = false;
+let pending = false;
 let generateTicket = 0;
-let revealTimer = 0;
-const REVEAL_HOLD = 420;
-const REVEAL_GAP = 480;
-const REVEAL_FADE = 720;
+let veilTimer = 0;
+const BLUR_MS = 520;
+const HOLD_MS = 280;
 const appEl = document.querySelector(".app");
+
+function prefersReducedMotion() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
 
 function currentMonthValue() {
   const now = new Date();
@@ -1334,7 +1339,7 @@ function weekdayRules(id, rule) {
 
 function renderCounts() {
   const tally = Object.fromEntries(DOCTORS.map((id) => [id, 0]));
-  const show = Boolean(state.grid) && !revealing;
+  const show = Boolean(state.grid) && veil === "sharp";
   if (show) for (const id of state.grid) tally[id] += 1;
   for (const id of DOCTORS) {
     const el = doctorsEl.querySelector(`[data-count="${id}"]`);
@@ -1342,12 +1347,21 @@ function renderCounts() {
   }
 }
 
-function syncRevealLock() {
-  appEl.classList.toggle("is-revealing", revealing);
-  calendarEl.toggleAttribute("inert", revealing);
-  doctorsEl.toggleAttribute("inert", revealing);
-  blockPanelEl.toggleAttribute("inert", revealing);
-  calendarEl.setAttribute("aria-busy", revealing ? "true" : "false");
+function syncChrome() {
+  const veiled = veil === "veiled" || veil === "holding";
+  const inFlight = veil === "blurring" || veil === "holding" || veil === "clearing";
+  const showActions = Boolean(state.grid) && (veil === "sharp" || (fromPlan && inFlight));
+  const showCta = !fromPlan && (veil === "veiled" || veil === "holding" || veil === "clearing");
+  appEl.classList.toggle("is-veiled", veiled);
+  calendarEl.toggleAttribute("inert", veil !== "sharp");
+  chooserEl.toggleAttribute("inert", veil !== "sharp");
+  calendarEl.setAttribute("aria-busy", veil === "sharp" ? "false" : "true");
+  generateButton.hidden = !showActions;
+  copyButton.hidden = !showActions;
+  generateButton.disabled = pending || veil !== "sharp";
+  generateButton.textContent = "Regenerate";
+  copyButton.disabled = pending || veil !== "sharp" || !state.grid;
+  veilButton.hidden = !showCta;
 }
 
 function blockPanel(id, parsed) {
@@ -1434,7 +1448,7 @@ function renderDoctors() {
   }).join("");
   renderCounts();
   renderBlockPanel();
-  syncRevealLock();
+  syncChrome();
 }
 
 function issueText(parsed, issue) {
@@ -1502,8 +1516,9 @@ function renderBoard() {
   monthInput.setAttribute("aria-label", title);
   document.title = `${title} · Monthly shift`;
 
-  if (revealing) {
-    statusEl.textContent = "No plan yet.";
+  const busy = veil === "blurring" || veil === "holding" || veil === "clearing";
+  if (busy && !state.reason) {
+    statusEl.textContent = state.grid ? "Plan ready." : "No plan yet.";
     statusEl.classList.remove("bad");
     statusEl.classList.add("quiet");
   } else if (state.reason) {
@@ -1523,7 +1538,7 @@ function renderBoard() {
     statusEl.classList.add("quiet");
   }
 
-  const selected = revealing ? null : state.selected;
+  const selected = veil === "sharp" ? state.selected : null;
   if (selected && state.grid) {
     const holder = state.grid[selected - 1];
     const others = DOCTORS.filter((id) => id !== holder).map((id) =>
@@ -1555,13 +1570,10 @@ function renderBoard() {
     const seam = seams.get(day) || {};
     const corner = corners.has(day);
     const dim = focusDoctor && holder !== focusDoctor;
-    const row = Math.floor(index / 7);
-    const arrive = revealing ? ` style="animation-delay:${REVEAL_HOLD + row * REVEAL_GAP}ms"` : "";
     const dayClass = [
       "day",
       `doctor-${holder}`,
       dim ? "dim" : "",
-      revealing ? "arriving" : "",
       seam.left ? "seam-left" : "",
       seam.right ? "seam-right" : "",
       seam.sat ? "seam-sat" : "",
@@ -1570,7 +1582,7 @@ function renderBoard() {
     const notes = [];
     if (seam.left || seam.right || seam.sat || seam.sun) notes.push("consecutive");
     if (corner) notes.push("broken");
-    return `<td class="${tdClass}"><button type="button" class="${dayClass}" data-doctor="${holder}" data-select="${day}" aria-pressed="${pressed}"${isToday ? ` aria-current="date"` : ""} aria-label="${formatDate(parsed, day)}, ${holder}${notes.length ? `, ${notes.join(", ")}` : ""}"${arrive}>${num}<span class="holder"${arrive}>${holder}</span>${corner ? `<span class="corner" aria-hidden="true"${arrive}></span>` : ""}</button></td>`;
+    return `<td class="${tdClass}"><button type="button" class="${dayClass}" data-doctor="${holder}" data-select="${day}" aria-pressed="${pressed}"${isToday ? ` aria-current="date"` : ""} aria-label="${formatDate(parsed, day)}, ${holder}${notes.length ? `, ${notes.join(", ")}` : ""}">${num}<span class="holder">${holder}</span>${corner ? `<span class="corner" aria-hidden="true"></span>` : ""}</button></td>`;
   });
   const rows = [];
   for (let index = 0; index < cells.length; index += 7) rows.push(`<tr>${cells.slice(index, index + 7).join("")}</tr>`);
@@ -1578,51 +1590,144 @@ function renderBoard() {
   calendarEl.innerHTML = `<table aria-label="${gridLabel}"><thead><tr>${WEEKDAYS.map(([, label]) => `<th scope="col">${label}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table>`;
 
   renderCounts();
-  issuesEl.innerHTML = !revealing && issues.length
+  issuesEl.innerHTML = veil === "sharp" && issues.length
     ? `<div class="issues"><p>Broken rules</p><ul>${issues.map((issue) => `<li>${issueText(parsed, issue)}</li>`).join("")}</ul></div>`
     : "";
   if (selected && state.grid) placeChooser();
-  copyButton.disabled = revealing || !state.grid;
-  syncRevealLock();
   if (!state.grid) {
     window.clearTimeout(copyTimer);
     copyButton.textContent = "Copy";
   }
+  syncChrome();
 }
 
-function releaseGenerate() {
-  generateButton.disabled = false;
-  generateButton.textContent = "Generate";
+function stopBlur() {
+  calendarEl.getAnimations().forEach((anim) => anim.cancel());
+  veilButton.getAnimations().forEach((anim) => anim.cancel());
+  calendarEl.style.filter = "";
 }
 
-function cancelReveal() {
-  window.clearTimeout(revealTimer);
-  revealTimer = 0;
-  revealing = false;
-  releaseGenerate();
+function playBlur(to) {
+  calendarEl.getAnimations().forEach((anim) => anim.cancel());
+  const from = getComputedStyle(calendarEl).filter;
+  const target = to === "none" ? "none" : to;
+  if (prefersReducedMotion() || from === target) {
+    calendarEl.style.filter = target === "none" ? "" : target;
+    return Promise.resolve();
+  }
+  const anim = calendarEl.animate(
+    [{ filter: from }, { filter: target }],
+    { duration: BLUR_MS, easing: "ease-in-out", fill: "forwards" }
+  );
+  return anim.finished.then(() => {
+    calendarEl.style.filter = target === "none" ? "" : target;
+    anim.cancel();
+  });
 }
 
-function finishReveal(ticket) {
-  if (ticket !== generateTicket || !revealing) return;
-  revealing = false;
-  window.clearTimeout(revealTimer);
-  revealTimer = 0;
+function fadeOutCta() {
+  if (fromPlan || veilButton.hidden || prefersReducedMotion()) {
+    veilButton.hidden = true;
+    return Promise.resolve();
+  }
+  const anim = veilButton.animate(
+    [{ opacity: 1 }, { opacity: 0 }],
+    { duration: BLUR_MS, easing: "ease-in-out", fill: "forwards" }
+  );
+  return anim.finished.then(() => {
+    veilButton.hidden = true;
+    anim.cancel();
+  });
+}
+
+function cancelVeil() {
+  window.clearTimeout(veilTimer);
+  veilTimer = 0;
+  fromPlan = false;
+  pending = false;
+  stopBlur();
+}
+
+function finishVeil(ticket) {
+  if (ticket !== generateTicket || veil !== "clearing") return;
+  veil = "sharp";
+  fromPlan = false;
+  pending = false;
+  calendarEl.style.filter = "";
   renderBoard();
-  releaseGenerate();
   statusEl.focus?.();
 }
 
-function startReveal(ticket) {
-  revealing = true;
+function beginClear(ticket) {
+  if (ticket !== generateTicket || veil !== "holding") return;
+  veil = "clearing";
+  calendarEl.style.filter = "blur(8px)";
+  const fade = fadeOutCta();
+  syncChrome();
+    playBlur("none").then(() => fade).then(() => finishVeil(ticket)).catch(() => {});
+}
+
+function paintAtPeak(ticket) {
+  if (ticket !== generateTicket) return;
+  const parsed = parseMonth(state.month);
+  const result = solve(datedDays(parsed), state.rules);
+  state.selected = null;
+  if (!result.ok) {
+    state.grid = null;
+    state.reason = result.reason;
+    fromPlan = false;
+    pending = false;
+    veil = "veiled";
+    stopBlur();
+    saveState();
+    renderBoard();
+    statusEl.focus?.();
+    return;
+  }
+  state.grid = result.days;
+  state.reason = "";
+  saveState();
+  if (prefersReducedMotion()) {
+    veil = "sharp";
+    fromPlan = false;
+    pending = false;
+    stopBlur();
+    renderBoard();
+    statusEl.focus?.();
+    return;
+  }
+  veil = "holding";
+  calendarEl.style.filter = "";
   renderBoard();
-  const rows = calendarEl.querySelectorAll("tbody tr").length || 1;
-  const lastDay = calendarEl.querySelector("tbody tr:last-child .day.arriving");
-  const done = (event) => {
-    if (event && event.target !== lastDay) return;
-    finishReveal(ticket);
-  };
-  if (lastDay) lastDay.addEventListener("animationend", done);
-  revealTimer = window.setTimeout(done, REVEAL_HOLD + (rows - 1) * REVEAL_GAP + REVEAL_FADE + 60);
+  veilTimer = window.setTimeout(() => beginClear(ticket), HOLD_MS);
+}
+
+function requestGenerate() {
+  if (pending) return;
+  const ticket = ++generateTicket;
+  pending = true;
+  window.clearTimeout(copyTimer);
+  copyButton.textContent = "Copy";
+  window.clearTimeout(veilTimer);
+  fromPlan = Boolean(state.grid);
+  state.selected = null;
+  chooserEl.hidden = true;
+  chooserEl.innerHTML = "";
+  statusEl.classList.remove("bad");
+  statusEl.classList.add("quiet");
+  if (fromPlan && !prefersReducedMotion()) {
+    veil = "blurring";
+    syncChrome();
+    playBlur("blur(8px)").then(() => {
+      if (ticket !== generateTicket) return;
+      calendarEl.style.filter = "";
+      paintAtPeak(ticket);
+    }).catch(() => {});
+    return;
+  }
+  if (!fromPlan && !prefersReducedMotion()) veil = "holding";
+  syncChrome();
+  window.setTimeout(() => paintAtPeak(ticket), 20);
 }
 
 function setMonth(value) {
@@ -1632,7 +1737,8 @@ function setMonth(value) {
     return;
   }
   generateTicket += 1;
-  cancelReveal();
+  cancelVeil();
+  veil = "veiled";
   state = { month: next.value, rules: blankRules(), grid: null, selected: null, reason: "" };
   focusDoctor = null;
   blockDoctor = null;
@@ -1678,42 +1784,11 @@ function showCopyResult(label) {
   }, 2000);
 }
 
-generateButton.addEventListener("click", () => {
-  const ticket = ++generateTicket;
-  window.clearTimeout(copyTimer);
-  copyButton.textContent = "Copy";
-  cancelReveal();
-  generateButton.disabled = true;
-  generateButton.textContent = "Working…";
-  window.setTimeout(() => {
-    if (ticket !== generateTicket) return;
-    const parsed = parseMonth(state.month);
-    const result = solve(datedDays(parsed), state.rules);
-    state.selected = null;
-    if (!result.ok) {
-      state.grid = null;
-      state.reason = result.reason;
-      saveState();
-      renderBoard();
-      releaseGenerate();
-      statusEl.focus?.();
-      return;
-    }
-    state.grid = result.days;
-    state.reason = "";
-    saveState();
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      renderBoard();
-      releaseGenerate();
-      statusEl.focus?.();
-      return;
-    }
-    startReveal(ticket);
-  }, 20);
-});
+generateButton.addEventListener("click", requestGenerate);
+veilButton.addEventListener("click", requestGenerate);
 
 copyButton.addEventListener("click", async () => {
-  if (revealing || !state.grid) return;
+  if (veil !== "sharp" || !state.grid) return;
   const text = sheetText(parseMonth(state.month), state.grid);
   try {
     await navigator.clipboard.writeText(text);
@@ -1733,7 +1808,6 @@ function setBlocked(id, day, on) {
 
 doctorsEl.addEventListener("click", (event) => {
   event.stopPropagation();
-  if (revealing) return;
   const focus = event.target.closest("[data-focus]");
   if (focus) {
     const id = focus.dataset.focus;
@@ -1805,7 +1879,6 @@ doctorsEl.addEventListener("click", (event) => {
 
 blockPanelEl.addEventListener("click", (event) => {
   event.stopPropagation();
-  if (revealing) return;
   const pick = event.target.closest("[data-block-day]");
   if (!pick) return;
   const id = pick.dataset.doctor;
@@ -1818,7 +1891,7 @@ blockPanelEl.addEventListener("click", (event) => {
 });
 
 calendarEl.addEventListener("click", (event) => {
-  if (revealing) return;
+  if (veil !== "sharp") return;
   const button = event.target.closest("[data-select]");
   if (!button) return;
   const day = Number(button.dataset.select);
@@ -1833,7 +1906,7 @@ calendarEl.addEventListener("click", (event) => {
 });
 
 chooserEl.addEventListener("click", (event) => {
-  if (revealing) return;
+  if (veil !== "sharp") return;
   const button = event.target.closest("[data-reassign]");
   if (!button || !state.selected || !state.grid) return;
   state.grid[state.selected - 1] = button.dataset.reassign;
@@ -1844,7 +1917,6 @@ chooserEl.addEventListener("click", (event) => {
 });
 
 document.addEventListener("click", (event) => {
-  if (revealing) return;
   if ((blockDoctor || weekdayPick) && !event.target.closest("#doctors, #block-panel")) {
     blockDoctor = null;
     weekdayPick = null;
@@ -1857,7 +1929,7 @@ document.addEventListener("click", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
-  if (event.key !== "Escape" || revealing) return;
+  if (event.key !== "Escape") return;
   if (weekdayPick) {
     const { id, wd } = weekdayPick;
     weekdayPick = null;
@@ -1886,6 +1958,7 @@ document.querySelector(".sidebar").addEventListener("scroll", () => {
 });
 
 monthInput.value = state.month;
+veil = state.grid ? "sharp" : "veiled";
 renderDoctors();
 renderBoard();
   </script>
