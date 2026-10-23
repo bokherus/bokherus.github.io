@@ -185,15 +185,25 @@
       color: var(--muted);
     }
     .add-date {
+      position: relative;
       width: 22px;
       height: 22px;
       padding: 0;
-      display: grid;
-      place-items: center;
-      font-size: 16px;
-      line-height: 1;
-      font-weight: 500;
+      font-size: 0;
+      color: var(--ink);
     }
+    .add-date::before,
+    .add-date::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      background: currentColor;
+      border-radius: 1px;
+      transform: translate(-50%, -50%);
+    }
+    .add-date::before { width: 10px; height: 1.5px; }
+    .add-date::after { width: 1.5px; height: 10px; }
     .add-date:hover { background: #e8e8ed; }
     .add-date[aria-expanded="true"],
     .add-date[aria-expanded="true"]:hover {
