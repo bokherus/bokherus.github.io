@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Monthly shift</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #f3ecdf;
+      --ink: #1d1914;
+      --muted: #5e564c;
+      --card: #fffaf3;
+      --line: #e2d6c4;
+      --accent: #1f6f4a;
+      --bad: #8d2e2e;
+      --bad-bg: #f8e4dc;
+      --a: #0f6e6b;
+      --b: #b4532a;
+      --c: #243e73;
+      --d: #5d6b22;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font: 16px/1.45 "Segoe UI", system-ui, sans-serif;
+    }
+    header, main { width: min(1120px, calc(100% - 32px)); margin: 0 auto; }
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: end;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 28px 0 18px;
+    }
+    h1 {
+      margin: 0;
+      font-family: Palatino, "Iowan Old Style", Georgia, serif;
+      font-size: 2rem;
+      font-weight: 600;
+      letter-spacing: -0.03em;
+    }
+    .lede { margin: 4px 0 0; color: var(--muted); max-width: 38rem; }
+    .controls { display: flex; gap: 10px; align-items: end; }
+    label.field { display: grid; gap: 4px; font-size: 0.85rem; color: var(--muted); }
+    input[type="month"], select {
+      font: inherit;
+      color: var(--ink);
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+    button {
+      font: inherit;
+      border: 0;
+      border-radius: 8px;
+      padding: 9px 14px;
+      cursor: pointer;
+    }
+    button:focus-visible, select:focus-visible, input:focus-visible, .day:focus-visible, .block:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+    #generate { background: var(--accent); color: white; font-weight: 650; }
+    #generate:disabled { opacity: 0.6; cursor: wait; }
+    .layout { display: grid; grid-template-columns: minmax(280px, 360px) 1fr; gap: 22px; padding-bottom: 48px; }
+    @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+    .doctor {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-top: 4px solid var(--tone);
+      border-radius: 12px;
+      padding: 12px 12px 14px;
+      margin-bottom: 12px;
+    }
+    .doctor h2 { margin: 0 0 8px; font-size: 1.15rem; }
+    .weekdays { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+    .weekdays label { display: grid; gap: 3px; font-size: 0.75rem; color: var(--muted); }
+    .weekdays select { width: 100%; padding: 6px 4px; }
+    .hint { margin: 8px 0; color: var(--muted); font-size: 0.82rem; }
+    .blocks { display: flex; flex-wrap: wrap; gap: 4px; }
+    .block, .choice, .day {
+      background: white;
+      border: 1px solid var(--line);
+      color: var(--ink);
+    }
+    .block { min-width: 2.1rem; padding: 4px 0; }
+    .block[aria-pressed="true"] { background: var(--ink); color: white; border-color: var(--ink); }
+    .board {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+    }
+    .status { margin: 0 0 12px; }
+    .status.bad { color: var(--bad); }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th { font-size: 0.75rem; font-weight: 600; color: var(--muted); text-align: center; padding-bottom: 6px; }
+    td { padding: 3px; vertical-align: top; height: 4.4rem; }
+    .day {
+      width: 100%;
+      height: 100%;
+      min-height: 3.6rem;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+    }
+    .day small { font-size: 0.72rem; color: var(--muted); }
+    .day strong { font-size: 1.15rem; }
+    .day[data-doctor="A"] { background: #d7ebe9; }
+    .day[data-doctor="B"] { background: #f8e3d6; }
+    .day[data-doctor="C"] { background: #dce3f2; }
+    .day[data-doctor="D"] { background: #e5ecd4; }
+    .day[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--ink); }
+    .day.broken { box-shadow: inset 0 0 0 2px var(--bad); }
+    .chooser, .counts, .issues { margin-top: 14px; }
+    .chooser p, .counts p { margin: 0 0 8px; }
+    .choice { padding: 8px 12px; margin-right: 6px; }
+    .counts ol, .issues ul { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+    .counts li, .issues li {
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 10px;
+    }
+    .issues ul { display: grid; gap: 6px; }
+    .issues li { border-radius: 8px; background: var(--bad-bg); border-color: #efc7bc; }
+    .doctor-A { --tone: var(--a); }
+    .doctor-B { --tone: var(--b); }
+    .doctor-C { --tone: var(--c); }
+    .doctor-D { --tone: var(--d); }
+    .badge { color: var(--tone); }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Monthly shift</h1>
+      <p class="lede">One Shift a day for A, B, C, and D. Generate builds a plan. Click a date to give that Shift to someone else.</p>
+    </div>
+    <div class="controls">
+      <label class="field">Month
+        <input id="month" type="month" required>
+      </label>
+      <button id="generate" type="button">Generate</button>
+    </div>
+  </header>
+  <main class="layout">
+    <section id="doctors" aria-label="Personal rules"></section>
+    <section class="board" aria-label="Plan">
+      <p id="status" class="status" tabindex="-1" aria-live="polite">No plan yet.</p>
+      <div id="chooser"></div>
+      <div id="calendar"></div>
+      <div id="counts"></div>
+      <div id="issues"></div>
+    </section>
+  </main>
+  <script>
+const DOCTORS = ["A", "B", "C", "D"];
+
+function monthDays(year, monthIndex) {
+  const n = new Date(year, monthIndex + 1, 0).getDate();
+  const days = [];
+  for (let day = 1; day <= n; day += 1) {
+    days.push({ day, weekday: new Date(year, monthIndex, day).getDay() });
+  }
+  return days;
+}
+
+function blankRules() {
+  const rules = {};
+  for (const id of DOCTORS) {
+    rules[id] = {
+      mode: { 0: "free", 1: "free", 2: "free", 3: "free", 4: "free", 5: "free", 6: "free" },
+      blocked: [],
+    };
+  }
+  return rules;
+}
+
+function modeCode(mode) {
+  if (mode === "ban") return 1;
+  if (mode === "cap") return 2;
+  return 0;
+}
+
+function prepare(days, rules) {
+  const n = days.length;
+  const minCount = Math.floor(n / 4);
+  const maxCount = Math.ceil(n / 4);
+  const weekday = new Uint8Array(n + 1);
+  const blocked = [null, null, null, null].map(() => new Uint8Array(n + 1));
+  const mode = [null, null, null, null].map(() => new Uint8Array(7));
+  days.forEach((item, index) => {
+    weekday[index + 1] = item.weekday;
+  });
+  DOCTORS.forEach((id, doctor) => {
+    const rule = rules[id];
+    for (let wd = 0; wd < 7; wd += 1) mode[doctor][wd] = modeCode(rule.mode[wd]);
+    for (const day of rule.blocked) {
+      if (day >= 1 && day <= n) blocked[doctor][day] = 1;
+    }
+  });
+  return { n, minCount, maxCount, weekday, blocked, mode, days };
+}
+
+function explain(ctx, rules) {
+  const { n, minCount, days, weekday, blocked, mode } = ctx;
+  for (let day = 1; day <= n; day += 1) {
+    const wd = weekday[day];
+    let holder = false;
+    for (let doctor = 0; doctor < 4; doctor += 1) {
+      if (!blocked[doctor][day] && mode[doctor][wd] !== 1) holder = true;
+    }
+    if (!holder) {
+      const when = formatDay(ctx, day);
+      return `${when} has no legal holder. Every doctor is blocked or banned that day.`;
+    }
+  }
+
+  const weekdayName = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  for (let wd = 1; wd <= 7; wd += 1) {
+    const weekdayIndex = wd % 7;
+    const dates = [];
+    for (let day = 1; day <= n; day += 1) if (weekday[day] === weekdayIndex) dates.push(day);
+    if (dates.length === 0) continue;
+    let cover = 0;
+    for (let doctor = 0; doctor < 4; doctor += 1) {
+      const available = dates.filter((day) => !blocked[doctor][day]).length;
+      const kind = mode[doctor][weekdayIndex];
+      if (kind === 1 || available === 0) continue;
+      cover += kind === 2 ? 1 : available;
+    }
+    if (cover < dates.length) {
+      const name = weekdayName[weekdayIndex];
+      return `${name} cannot be covered. Bans and caps allow ${cover} Shift${cover === 1 ? "" : "s"} for ${dates.length} ${name}s.`;
+    }
+  }
+
+  for (let doctor = 0; doctor < 4; doctor += 1) {
+    let most = 0;
+    for (let wd = 0; wd < 7; wd += 1) {
+      if (mode[doctor][wd] === 1) continue;
+      let available = 0;
+      for (let day = 1; day <= n; day += 1) {
+        if (weekday[day] === wd && !blocked[doctor][day]) available += 1;
+      }
+      if (available === 0) continue;
+      most += mode[doctor][wd] === 2 ? 1 : available;
+    }
+    if (most < minCount) {
+      return `${DOCTORS[doctor]} can hold at most ${most} Shift${most === 1 ? "" : "s"} under these rules. Balance needs at least ${minCount}.`;
+    }
+  }
+  return "";
+}
+
+function formatDay(ctx, day) {
+  const item = ctx.days[day - 1];
+  if (item.year == null) return `Day ${day}`;
+  return new Date(item.year, item.monthIndex, day).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function stretchKey(assignment) {
+  const n = assignment.length;
+  const stretches = [];
+  for (let doctor = 0; doctor < 4; doctor += 1) {
+    const held = [];
+    for (let index = 0; index < n; index += 1) if (assignment[index] === doctor) held.push(index + 1);
+    if (held.length === 0) {
+      stretches.push(n);
+      continue;
+    }
+    if (held[0] > 1) stretches.push(held[0] - 1);
+    for (let i = 1; i < held.length; i += 1) {
+      const gap = held[i] - held[i - 1] - 1;
+      if (gap > 0) stretches.push(gap);
+    }
+    if (held[held.length - 1] < n) stretches.push(n - held[held.length - 1]);
+  }
+  stretches.sort((a, b) => b - a);
+  return stretches;
+}
+
+function hasCap(ctx, doctor) {
+  for (let wd = 0; wd < 7; wd += 1) if (ctx.mode[doctor][wd] === 2) return true;
+  return false;
+}
+
+function canHold(ctx, doctor, day) {
+  const wd = ctx.weekday[day];
+  return !ctx.blocked[doctor][day] && ctx.mode[doctor][wd] !== 1;
+}
+
+function stretchLowerBound(ctx) {
+  const must = [0, 1, 2, 3].map(() => []);
+  for (let day = 1; day <= ctx.n; day += 1) {
+    const possible = [];
+    for (let doctor = 0; doctor < 4; doctor += 1) if (canHold(ctx, doctor, day)) possible.push(doctor);
+    if (possible.length === 1) must[possible[0]].push(day);
+  }
+
+  let bound = 0;
+  for (let doctor = 0; doctor < 4; doctor += 1) {
+    if (hasCap(ctx, doctor)) continue;
+    const needed = new Set(must[doctor]);
+    let lo = 0;
+    let hi = ctx.n;
+    let best = null;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (fitsStretch(ctx, doctor, needed, mid)) {
+        best = mid;
+        hi = mid - 1;
+      } else lo = mid + 1;
+    }
+    if (best === null) return Number.POSITIVE_INFINITY;
+    if (best > bound) bound = best;
+  }
+  return bound;
+}
+
+function fitsStretch(ctx, doctor, needed, limit) {
+  const n = ctx.n;
+  const maxK = ctx.maxCount;
+  let prev = Array.from({ length: maxK + 1 }, () => new Uint8Array(n + 1));
+  prev[0][0] = 1;
+  for (let day = 1; day <= n; day += 1) {
+    const next = Array.from({ length: maxK + 1 }, () => new Uint8Array(n + 1));
+    for (let used = 0; used <= maxK; used += 1) {
+      for (let last = 0; last < day; last += 1) {
+        if (!prev[used][last]) continue;
+        if (!needed.has(day) && day - last <= limit) next[used][last] = 1;
+        if (used < maxK && canHold(ctx, doctor, day) && (last === 0 || day !== last + 1)) {
+          if (day - last - 1 <= limit) next[used + 1][day] = 1;
+        }
+      }
+    }
+    prev = next;
+  }
+  for (let used = ctx.minCount; used <= maxK; used += 1) {
+    for (let last = 0; last <= n; last += 1) {
+      if (prev[used][last] && n - last <= limit) return true;
+    }
+  }
+  return false;
+}
+
+function betterTallies(a, b) {
+  for (let stretch = a.length - 1; stretch >= 1; stretch -= 1) {
+    if (a[stretch] !== b[stretch]) return a[stretch] < b[stretch];
+  }
+  return false;
+}
+
+function sameTallies(a, b) {
+  for (let stretch = 1; stretch < a.length; stretch += 1) if (a[stretch] !== b[stretch]) return false;
+  return true;
+}
+
+function talliesToKey(tallies) {
+  const key = [];
+  for (let stretch = tallies.length - 1; stretch >= 1; stretch -= 1) {
+    for (let count = 0; count < tallies[stretch]; count += 1) key.push(stretch);
+  }
+  return key;
+}
+
+function searchLimit(ctx, limit, rng) {
+  const { n, maxCount, minCount, weekday, mode } = ctx;
+  const history = limit + 1;
+  const window = limit + 1;
+  const slots = [];
+  const slotAt = [0, 1, 2, 3].map(() => new Int8Array(7).fill(-1));
+  for (let doctor = 0; doctor < 4; doctor += 1) {
+    for (let wd = 0; wd < 7; wd += 1) {
+      if (mode[doctor][wd] === 2) {
+        slotAt[doctor][wd] = slots.length;
+        slots.push(1);
+      }
+    }
+  }
+
+  const layers = [];
+  let layer = new Map();
+  layer.set(`0000||${"0".repeat(slots.length)}`, {
+    hist: [],
+    counts: [0, 0, 0, 0],
+    cap: slots.length ? new Uint8Array(slots.length) : new Uint8Array(0),
+    tallies: new Uint16Array(limit + 1),
+    ways: 1,
+    pred: [0, 0, 0, 0],
+  });
+  layers[0] = layer;
+  let nodes = 1;
+
+  for (let day = 1; day <= n; day += 1) {
+    const next = new Map();
+    const wd = weekday[day];
+    for (const state of layer.values()) {
+      for (let doctor = 0; doctor < 4; doctor += 1) {
+        if (state.hist.length && state.hist[state.hist.length - 1] === doctor) continue;
+        if (!canHold(ctx, doctor, day) || state.counts[doctor] >= maxCount) continue;
+        const slot = slots.length ? slotAt[doctor][wd] : -1;
+        if (slot >= 0 && state.cap[slot]) continue;
+
+        let prevDay = 0;
+        for (let index = 0; index < state.hist.length; index += 1) {
+          if (state.hist[index] === doctor) prevDay = day - state.hist.length + index;
+        }
+        const tallies = state.tallies.slice();
+        if (prevDay === 0) {
+          if (day - 1 > limit) continue;
+          if (day > 1) tallies[day - 1] += 1;
+        } else {
+          const gap = day - prevDay - 1;
+          if (gap > limit) continue;
+          if (gap > 0) tallies[gap] += 1;
+        }
+
+        const dropping = state.hist.length === history;
+        if (day >= window) {
+          const seen = new Set(dropping ? state.hist.slice(1) : state.hist);
+          seen.add(doctor);
+          if (seen.size < 4) continue;
+        }
+
+        const newHist = dropping ? state.hist.slice(1).concat(doctor) : state.hist.concat(doctor);
+        const newCounts = state.counts.slice();
+        newCounts[doctor] += 1;
+        const newCap = state.cap.slice();
+        if (slot >= 0) newCap[slot] = 1;
+        const key = `${newCounts.join("")}|${newHist.join("")}|${newCap.join("")}`;
+        const dropped = dropping ? state.hist[0] : -1;
+        const existing = next.get(key);
+        if (!existing || betterTallies(tallies, existing.tallies)) {
+          const pred = [0, 0, 0, 0];
+          if (dropped >= 0) pred[dropped] = state.ways;
+          next.set(key, {
+            hist: newHist,
+            counts: newCounts,
+            cap: newCap,
+            tallies,
+            ways: state.ways,
+            pred,
+          });
+        } else if (sameTallies(tallies, existing.tallies)) {
+          existing.ways += state.ways;
+          if (dropped >= 0) existing.pred[dropped] += state.ways;
+        }
+      }
+    }
+    nodes += next.size;
+    if (next.size === 0) return { nodes, chosen: null, ties: 0, key: null };
+    layer = next;
+    layers[day] = layer;
+  }
+
+  let best = null;
+  let total = 0;
+  const endings = [];
+  for (const state of layer.values()) {
+    if (state.counts.some((value, doctor) => value < minCount)) continue;
+    const finalTallies = state.tallies.slice();
+    for (let doctor = 0; doctor < 4; doctor += 1) {
+      let lastDay = 0;
+      for (let index = 0; index < state.hist.length; index += 1) {
+        if (state.hist[index] === doctor) lastDay = n - state.hist.length + 1 + index;
+      }
+      const after = n - lastDay;
+      if (after > 0) finalTallies[after] += 1;
+    }
+    if (!best || betterTallies(finalTallies, best)) {
+      best = finalTallies;
+      endings.length = 0;
+      total = 0;
+    }
+    if (sameTallies(finalTallies, best)) {
+      endings.push(state);
+      total += state.ways;
+    }
+  }
+  if (!total) return { nodes, chosen: null, ties: 0, key: null };
+
+  let ticket = Math.floor(rng() * total);
+  let chosenState = endings[endings.length - 1];
+  for (const state of endings) {
+    if (ticket < state.ways) {
+      chosenState = state;
+      break;
+    }
+    ticket -= state.ways;
+  }
+
+  const plan = new Array(n);
+  let state = chosenState;
+  for (let day = n; day >= 1; day -= 1) {
+    const doctor = state.hist[state.hist.length - 1];
+    plan[day - 1] = doctor;
+    if (day === 1) break;
+    let prevHist;
+    if (day > history) {
+      let cursor = Math.floor(rng() * state.pred.reduce((sum, value) => sum + value, 0));
+      let dropped = 0;
+      for (; dropped < 3; dropped += 1) {
+        if (cursor < state.pred[dropped]) break;
+        cursor -= state.pred[dropped];
+      }
+      prevHist = [dropped].concat(state.hist.slice(0, -1));
+    } else {
+      prevHist = state.hist.slice(0, -1);
+    }
+    const prevCounts = state.counts.slice();
+    prevCounts[doctor] -= 1;
+    const prevCap = state.cap.slice();
+    const slot = slotAt[doctor][weekday[day]];
+    if (slot >= 0) prevCap[slot] = 0;
+    const prevKey = `${prevCounts.join("")}|${prevHist.join("")}|${prevCap.join("")}`;
+    state = layers[day - 1].get(prevKey);
+  }
+
+  return { nodes, chosen: plan, ties: total, key: talliesToKey(best) };
+}
+
+function solve(days, rules, rng = Math.random) {
+  const dated = days.map((item) => ({ ...item }));
+  const ctx = prepare(dated, rules);
+  const reason = explain(ctx, rules);
+  if (reason) return { ok: false, reason, nodes: 0, ties: 0 };
+
+  const lower = stretchLowerBound(ctx);
+  if (!Number.isFinite(lower)) {
+    return {
+      ok: false,
+      reason: "No plan meets these rules. Consecutive Shifts and the personal rules cannot be satisfied together.",
+      nodes: 0,
+      ties: 0,
+      truncated: false,
+      lower,
+    };
+  }
+  let nodes = 0;
+  for (let limit = lower; limit <= ctx.n; limit += 1) {
+    const found = searchLimit(ctx, limit, rng);
+    nodes += found.nodes;
+    if (!found.chosen) continue;
+    return {
+      ok: true,
+      days: found.chosen.map((doctor) => DOCTORS[doctor]),
+      key: found.key,
+      nodes,
+      ties: found.ties,
+      truncated: false,
+      lower,
+    };
+  }
+  return {
+    ok: false,
+    reason: "No plan meets these rules. Consecutive Shifts and the personal rules cannot be satisfied together.",
+    nodes,
+    ties: 0,
+    truncated: false,
+    lower,
+  };
+}
+
+function evaluate(days, rules, letters) {
+  const ctx = prepare(days, rules);
+  const assignment = letters.map((letter) => DOCTORS.indexOf(letter));
+  const issues = [];
+  for (let index = 1; index < assignment.length; index += 1) {
+    if (assignment[index] === assignment[index - 1]) {
+      issues.push({ type: "consecutive", days: [index, index + 1], doctor: DOCTORS[assignment[index]] });
+    }
+  }
+  for (let index = 0; index < assignment.length; index += 1) {
+    const doctor = assignment[index];
+    const day = index + 1;
+    const wd = ctx.weekday[day];
+    if (ctx.blocked[doctor][day]) issues.push({ type: "blocked", days: [day], doctor: DOCTORS[doctor] });
+    else if (ctx.mode[doctor][wd] === 1) issues.push({ type: "ban", days: [day], doctor: DOCTORS[doctor] });
+  }
+  for (let doctor = 0; doctor < 4; doctor += 1) {
+    for (let wd = 0; wd < 7; wd += 1) {
+      if (ctx.mode[doctor][wd] !== 2) continue;
+      const held = [];
+      for (let day = 1; day <= ctx.n; day += 1) {
+        if (ctx.weekday[day] === wd && assignment[day - 1] === doctor) held.push(day);
+      }
+      if (held.length > 1) issues.push({ type: "cap", days: held, doctor: DOCTORS[doctor], weekday: wd });
+    }
+  }
+  const counts = [0, 0, 0, 0];
+  for (const doctor of assignment) counts[doctor] += 1;
+  if (Math.max(...counts) - Math.min(...counts) > 1) {
+    issues.push({ type: "balance", counts: counts.map((value, doctor) => [DOCTORS[doctor], value]) });
+  }
+  return issues;
+}
+
+
+const STORAGE_KEY = "turbo-shift-v1";
+const WEEKDAYS = [[1, "Mon"], [2, "Tue"], [3, "Wed"], [4, "Thu"], [5, "Fri"], [6, "Sat"], [0, "Sun"]];
+const WEEKDAY_NAME = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+const monthInput = document.querySelector("#month");
+const generateButton = document.querySelector("#generate");
+const doctorsEl = document.querySelector("#doctors");
+const statusEl = document.querySelector("#status");
+const chooserEl = document.querySelector("#chooser");
+const calendarEl = document.querySelector("#calendar");
+const countsEl = document.querySelector("#counts");
+const issuesEl = document.querySelector("#issues");
+
+let state = loadState();
+
+function currentMonthValue() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function parseMonth(value) {
+  const match = /^(\d{4})-(\d{2})$/.exec(value || "");
+  if (!match) return null;
+  const monthIndex = Number(match[2]) - 1;
+  if (monthIndex < 0 || monthIndex > 11) return null;
+  return { year: Number(match[1]), monthIndex, value: `${match[1]}-${match[2]}` };
+}
+
+function datedDays(parsed) {
+  return monthDays(parsed.year, parsed.monthIndex).map((item) => ({
+    ...item,
+    year: parsed.year,
+    monthIndex: parsed.monthIndex,
+  }));
+}
+
+function loadState() {
+  const fresh = () => ({ month: currentMonthValue(), rules: blankRules(), grid: null, selected: null, reason: "" });
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+    const parsed = saved && parseMonth(saved.month);
+    if (!parsed || !saved.rules) return fresh();
+    const days = datedDays(parsed);
+    const rules = blankRules();
+    for (const id of DOCTORS) {
+      const incoming = saved.rules[id] || {};
+      for (let wd = 0; wd < 7; wd += 1) {
+        const mode = incoming.mode?.[wd] ?? incoming.mode?.[String(wd)];
+        if (mode === "free" || mode === "ban" || mode === "cap") rules[id].mode[wd] = mode;
+      }
+      if (Array.isArray(incoming.blocked)) {
+        rules[id].blocked = incoming.blocked.filter((day) => Number.isInteger(day) && day >= 1 && day <= days.length);
+      }
+    }
+    const grid = Array.isArray(saved.grid) && saved.grid.length === days.length && saved.grid.every((id) => DOCTORS.includes(id))
+      ? saved.grid.slice()
+      : null;
+    return { month: parsed.value, rules, grid, selected: null, reason: "" };
+  } catch {
+    return fresh();
+  }
+}
+
+function saveState() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ month: state.month, rules: state.rules, grid: state.grid }));
+}
+
+function formatDay(parsed, day) {
+  return new Date(parsed.year, parsed.monthIndex, day).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function renderDoctors() {
+  const parsed = parseMonth(state.month);
+  const days = datedDays(parsed);
+  doctorsEl.innerHTML = DOCTORS.map((id) => {
+    const rule = state.rules[id];
+    const blocked = new Set(rule.blocked);
+    const weekdayFields = WEEKDAYS.map(([wd, label]) => `
+      <label>${label}
+        <select data-doctor="${id}" data-weekday="${wd}" aria-label="${id} ${WEEKDAY_NAME[wd]}">
+          <option value="free"${rule.mode[wd] === "free" ? " selected" : ""}>Free</option>
+          <option value="ban"${rule.mode[wd] === "ban" ? " selected" : ""}>Ban</option>
+          <option value="cap"${rule.mode[wd] === "cap" ? " selected" : ""}>Cap</option>
+        </select>
+      </label>`).join("");
+    const blocks = days.map((item) => `
+      <button type="button" class="block" data-doctor="${id}" data-day="${item.day}" aria-pressed="${blocked.has(item.day)}" aria-label="Block ${formatDay(parsed, item.day)} for ${id}">${item.day}</button>`).join("");
+    return `
+      <article class="doctor doctor-${id}">
+        <h2 class="badge">${id}</h2>
+        <div class="weekdays">${weekdayFields}</div>
+        <p class="hint">Ban never. Cap at most once. Blocked dates stay Non-shift.</p>
+        <div class="blocks">${blocks}</div>
+      </article>`;
+  }).join("");
+}
+
+function issueText(parsed, issue) {
+  const when = (day) => formatDay(parsed, day);
+  if (issue.type === "consecutive") return `${issue.doctor} holds ${when(issue.days[0])} and ${when(issue.days[1])}.`;
+  if (issue.type === "blocked") return `${issue.doctor} holds ${when(issue.days[0])}, which is blocked.`;
+  if (issue.type === "ban") return `${issue.doctor} holds ${when(issue.days[0])}, which is banned.`;
+  if (issue.type === "cap") {
+    const name = WEEKDAY_NAME[issue.weekday];
+    return `${issue.doctor} holds more than one ${name}: ${issue.days.map(when).join(" and ")}.`;
+  }
+  const counts = issue.counts.map(([id, value]) => `${id} ${value}`).join(", ");
+  return `Balance is missed. Shifts are ${counts}.`;
+}
+
+function renderBoard() {
+  const parsed = parseMonth(state.month);
+  const days = datedDays(parsed);
+  const issues = state.grid ? evaluate(days, state.rules, state.grid) : [];
+  const broken = new Set(issues.flatMap((issue) => issue.days || []));
+
+  if (state.reason) {
+    statusEl.textContent = state.reason;
+    statusEl.classList.add("bad");
+  } else if (!state.grid) {
+    statusEl.textContent = "No plan yet.";
+    statusEl.classList.remove("bad");
+  } else if (issues.length) {
+    statusEl.textContent = "This grid breaks a rule.";
+    statusEl.classList.add("bad");
+  } else {
+    statusEl.textContent = "Plan ready.";
+    statusEl.classList.remove("bad");
+  }
+
+  if (!state.grid) {
+    chooserEl.innerHTML = "";
+    calendarEl.innerHTML = "";
+    countsEl.innerHTML = "";
+    issuesEl.innerHTML = "";
+    return;
+  }
+
+  const selected = state.selected;
+  if (selected) {
+    const holder = state.grid[selected - 1];
+    const others = DOCTORS.filter((id) => id !== holder).map((id) =>
+      `<button type="button" class="choice" data-reassign="${id}">${id}</button>`).join("");
+    chooserEl.innerHTML = `<p>Give ${formatDay(parsed, selected)} to</p><div>${others}</div>`;
+  } else {
+    chooserEl.innerHTML = "";
+  }
+
+  const lead = (new Date(parsed.year, parsed.monthIndex, 1).getDay() + 6) % 7;
+  const cells = Array.from({ length: lead }, () => "<td></td>");
+  days.forEach((item) => {
+    const holder = state.grid[item.day - 1];
+    cells.push(`<td><button type="button" class="day${broken.has(item.day) ? " broken" : ""}" data-doctor="${holder}" data-select="${item.day}" aria-pressed="${selected === item.day}" aria-label="${formatDay(parsed, item.day)}, ${holder}"><small>${item.day}</small><strong>${holder}</strong></button></td>`);
+  });
+  while (cells.length % 7) cells.push("<td></td>");
+  const rows = [];
+  for (let index = 0; index < cells.length; index += 7) rows.push(`<tr>${cells.slice(index, index + 7).join("")}</tr>`);
+  calendarEl.innerHTML = `<table><caption class="hint">Shift holder for each date. Weeks start on Monday.</caption><thead><tr>${WEEKDAYS.map(([, label]) => `<th scope="col">${label}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table>`;
+
+  const tally = Object.fromEntries(DOCTORS.map((id) => [id, 0]));
+  for (const id of state.grid) tally[id] += 1;
+  countsEl.innerHTML = `<p>Shifts</p><ol>${DOCTORS.map((id) => `<li class="badge doctor-${id}">${id} ${tally[id]}</li>`).join("")}</ol>`;
+
+  issuesEl.innerHTML = issues.length
+    ? `<div class="issues"><p>Broken rules</p><ul>${issues.map((issue) => `<li>${issueText(parsed, issue)}</li>`).join("")}</ul></div>`
+    : "";
+}
+
+monthInput.addEventListener("change", () => {
+  const next = parseMonth(monthInput.value);
+  if (!next || next.value === state.month) {
+    monthInput.value = state.month;
+    return;
+  }
+  state = { month: next.value, rules: blankRules(), grid: null, selected: null, reason: "" };
+  saveState();
+  renderDoctors();
+  renderBoard();
+});
+
+generateButton.addEventListener("click", () => {
+  generateButton.disabled = true;
+  generateButton.textContent = "Working…";
+  window.setTimeout(() => {
+    const parsed = parseMonth(state.month);
+    const result = solve(datedDays(parsed), state.rules);
+    state.selected = null;
+    if (result.ok) {
+      state.grid = result.days;
+      state.reason = "";
+    } else {
+      state.grid = null;
+      state.reason = result.reason;
+    }
+    saveState();
+    renderBoard();
+    generateButton.disabled = false;
+    generateButton.textContent = "Generate";
+    statusEl.focus?.();
+  }, 20);
+});
+
+doctorsEl.addEventListener("change", (event) => {
+  const select = event.target.closest("select");
+  if (!select) return;
+  state.rules[select.dataset.doctor].mode[select.dataset.weekday] = select.value;
+  saveState();
+  renderBoard();
+});
+
+doctorsEl.addEventListener("click", (event) => {
+  const button = event.target.closest(".block");
+  if (!button) return;
+  const id = button.dataset.doctor;
+  const day = Number(button.dataset.day);
+  const blocked = new Set(state.rules[id].blocked);
+  if (blocked.has(day)) blocked.delete(day);
+  else blocked.add(day);
+  state.rules[id].blocked = [...blocked].sort((a, b) => a - b);
+  button.setAttribute("aria-pressed", String(blocked.has(day)));
+  saveState();
+  renderBoard();
+});
+
+calendarEl.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-select]");
+  if (!button) return;
+  const day = Number(button.dataset.select);
+  state.selected = state.selected === day ? null : day;
+  renderBoard();
+});
+
+chooserEl.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-reassign]");
+  if (!button || !state.selected || !state.grid) return;
+  state.grid[state.selected - 1] = button.dataset.reassign;
+  state.selected = null;
+  state.reason = "";
+  saveState();
+  renderBoard();
+});
+
+monthInput.value = state.month;
+renderDoctors();
+renderBoard();
+  </script>
+</body>
+</html>
