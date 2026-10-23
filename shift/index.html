@@ -238,6 +238,19 @@
     }
     #generate:hover { background: #0071eb; }
     #generate:disabled { opacity: 0.55; cursor: progress; }
+    #copy {
+      height: 28px;
+      border: 0;
+      border-radius: 8px;
+      background: var(--field);
+      color: var(--ink);
+      padding: 0 12px;
+      font-size: 13px;
+      font-weight: 590;
+    }
+    #copy:hover { background: #e8e8ed; }
+    #copy:disabled,
+    #copy:disabled:hover { opacity: 0.55; background: var(--field); cursor: default; }
     .stage {
       grid-area: stage;
       position: relative;
@@ -414,6 +427,7 @@
           </button>
         </div>
         <button id="generate" type="button">Generate</button>
+        <button id="copy" type="button" disabled>Copy</button>
       </div>
     </header>
     <main class="stage" aria-label="Plan">
@@ -878,6 +892,8 @@ const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "S
 const monthInput = document.querySelector("#month");
 const monthTitleEl = document.querySelector("#month-title");
 const generateButton = document.querySelector("#generate");
+const copyButton = document.querySelector("#copy");
+let copyTimer = 0;
 const doctorsEl = document.querySelector("#doctors");
 const statusEl = document.querySelector("#status");
 const chooserEl = document.querySelector("#chooser");
@@ -1177,6 +1193,11 @@ function renderBoard() {
     ? `<div class="issues"><p>Broken rules</p><ul>${issues.map((issue) => `<li>${issueText(parsed, issue)}</li>`).join("")}</ul></div>`
     : "";
   if (selected && state.grid) placeChooser();
+  copyButton.disabled = !state.grid;
+  if (!state.grid) {
+    window.clearTimeout(copyTimer);
+    copyButton.textContent = "Copy";
+  }
 }
 
 function setMonth(value) {
@@ -1206,7 +1227,33 @@ document.querySelector("#prev").addEventListener("click", () => shiftMonth(-1));
 document.querySelector("#next").addEventListener("click", () => shiftMonth(1));
 document.querySelector("#today").addEventListener("click", () => setMonth(currentMonthValue()));
 
+function sheetText(parsed, grid) {
+  const lines = [];
+  for (let day = 1; day <= grid.length; day += 1) {
+    const date = new Date(parsed.year, parsed.monthIndex, day);
+    const formattedDate = date.toLocaleString("th-TH", {
+      day: "numeric",
+      month: "short",
+      year: "2-digit",
+    });
+    const fullDay = date.toLocaleDateString("th-TH", { weekday: "long" });
+    const trimmedDay = fullDay.replace(/^วัน/, "");
+    lines.push([formattedDate, trimmedDay, grid[day - 1]].join("\t"));
+  }
+  return lines.join("\n");
+}
+
+function showCopyResult(label) {
+  window.clearTimeout(copyTimer);
+  copyButton.textContent = label;
+  copyTimer = window.setTimeout(() => {
+    copyButton.textContent = "Copy";
+  }, 2000);
+}
+
 generateButton.addEventListener("click", () => {
+  window.clearTimeout(copyTimer);
+  copyButton.textContent = "Copy";
   generateButton.disabled = true;
   generateButton.textContent = "Working…";
   window.setTimeout(() => {
@@ -1226,6 +1273,17 @@ generateButton.addEventListener("click", () => {
     generateButton.textContent = "Generate";
     statusEl.focus?.();
   }, 20);
+});
+
+copyButton.addEventListener("click", async () => {
+  if (!state.grid) return;
+  const text = sheetText(parseMonth(state.month), state.grid);
+  try {
+    await navigator.clipboard.writeText(text);
+    showCopyResult("Copied");
+  } catch {
+    showCopyResult("Failed");
+  }
 });
 
 function setBlocked(id, day, on) {
